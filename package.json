@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:preview": "node scripts/build-preview.mjs",
+    "test": "vitest run",
+    "publish:preview": "node scripts/publish-preview.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

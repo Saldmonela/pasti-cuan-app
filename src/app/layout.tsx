@@ -4,9 +4,11 @@ import "@fontsource-variable/inter";
 import { StoreProvider } from "@/lib/store";
 import "./globals.css";
 
+// PWA (PRD 3.2): manifest statis di public/. Ikon PNG 192/512 px perlu dibuat sebelum rilis.
 export const metadata: Metadata = {
   title: "Pasti Cuan",
   description: "Buku catatan bersama dana patungan LP Pasti Cuan.",
+  manifest: `${process.env.PREVIEW_BASE_PATH ?? ""}/manifest.webmanifest`,
 };
 
 export const viewport: Viewport = {

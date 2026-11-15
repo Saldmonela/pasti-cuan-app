@@ -14,9 +14,21 @@ npm run dev
 Buka http://localhost:3000. Tombol **Prototype** (atas tengah di HP, kanan atas di laptop) untuk pindah akun (Salman, Rezki, Galih sebagai pengelola, dll.), memilih kondisi layar (memuat, gagal, data lama, cek gagal, offline, belum setor), dan mengembalikan data contoh.
 
 ```bash
-npx vitest run   # golden test PRD Section 3.3
+npm test         # golden test PRD Section 3.3
 npm run build
 ```
+
+## Preview untuk teman-teman
+
+Preview online: https://saldmonela.github.io/pasti-cuan-preview/
+
+Repo `Saldmonela/pasti-cuan-preview` hanya berisi hasil build statis (folder `out/`), bukan kode sumber. Setelah mengubah prototype, perbarui preview dengan:
+
+```bash
+npm run publish:preview
+```
+
+Skrip ini membangun versi statis (`output: "export"` dengan `basePath` = nama repo, tanpa Cache Components karena static export tidak mendukung PPR), lalu force-push isi `out/` ke repo preview. Butuh GitHub CLI yang sudah login. Data tiap orang tersimpan di browser masing-masing, jadi teman-teman bisa mencoba setor/tarik/kelola tanpa saling mengganggu.
 
 ## Isi
 
