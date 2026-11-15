@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  // Badge dev Next menutupi navigasi bawah di layar HP; error tetap tampil di overlay.
+  devIndicators: false,
 };
 
 export default nextConfig;
