@@ -302,6 +302,7 @@ export const TX_CONTOH: TxMentah[] = [
 // ---------- titik nilai (BR-17, tabel `titik_nilai`) ----------
 
 export interface TitikNilai {
+  id?: number;
   ms: number;
   nilaiUsd: number;
   saldoSol: number;

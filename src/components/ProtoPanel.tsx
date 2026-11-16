@@ -6,13 +6,14 @@ import { useRouter } from "next/navigation";
 import { IconFlask } from "@tabler/icons-react";
 import { waktu } from "@/lib/format";
 import { isoWib, ms } from "@/lib/onchain";
-import { LOMPATAN, SKENARIO, useStore } from "@/lib/store";
+import { IS_PROTOTYPE, LOMPATAN, SKENARIO, useStore } from "@/lib/store";
 import { Sheet } from "./ui";
 
 export default function ProtoPanel() {
   const { data, saya, masuk, keluar, skenario, setSkenario, reset, sekarang, majukanWaktu } = useStore();
   const [buka, setBuka] = useState(false);
   const router = useRouter();
+  if (!IS_PROTOTYPE) return null;
   const akun = data.anggota.filter((a) => a.aktif);
 
   return (

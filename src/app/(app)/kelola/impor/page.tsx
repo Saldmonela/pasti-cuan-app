@@ -79,8 +79,8 @@ export default function Impor() {
                     className="btn ton sm"
                     style={{ marginTop: 8 }}
                     disabled={offline}
-                    onClick={() => {
-                      const h = buatUlangEstimasi();
+                    onClick={async () => {
+                      const h = await buatUlangEstimasi();
                       if (h.ok) tampilkan("Titik estimasi per jam dibuat ulang.");
                     }}
                   >
@@ -192,8 +192,8 @@ export default function Impor() {
                   className="btn pri block"
                   style={{ marginTop: 16 }}
                   disabled={!!pv.kesalahan.length || offline}
-                  onClick={() => {
-                    const h = impor(pv.snapshots, pv.transaksi, pv.estimasi > 0);
+                  onClick={async () => {
+                    const h = await impor(pv.snapshots, pv.transaksi, pv.estimasi > 0);
                     if (!h.ok) return setErr(h.pesan);
                     tampilkan(`Riwayat diimpor: ${pv.snapshots.length} saldo harian dan ${pv.transaksi.length} transaksi.`);
                     setPv(null);
@@ -216,8 +216,8 @@ export default function Impor() {
           <button
             type="button"
             className="btn danger"
-            onClick={() => {
-              const h = batalkanImpor();
+            onClick={async () => {
+              const h = await batalkanImpor();
               setBatal(false);
               if (!h.ok) return setErr(h.pesan);
               setErr("");

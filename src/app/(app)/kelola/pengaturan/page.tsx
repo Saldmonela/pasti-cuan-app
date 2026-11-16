@@ -136,8 +136,8 @@ export default function Pengaturan() {
           <button
             type="button"
             className="btn pri"
-            onClick={() => {
-              ubahPengaturan({
+            onClick={async () => {
+              const h = await ubahPengaturan({
                 feePersen: nFee! / 100,
                 satuanDasarFee: dasar,
                 batasDataLamaHari: nLama!,
@@ -148,7 +148,7 @@ export default function Pengaturan() {
                 toleransiCocokPersen: nToleransi!,
               });
               setYakin(false);
-              tampilkan("Pengaturan tersimpan. Semua posisi sudah diperbarui.");
+              if (h.ok) tampilkan("Pengaturan tersimpan. Semua posisi sudah diperbarui.");
             }}
           >
             Simpan

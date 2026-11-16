@@ -23,7 +23,7 @@ export default function Setor() {
   const pending = menunggu.find((p) => p.anggotaId === saya.id && p.jenis === "setor");
   const nonaktif = offline || !!pending;
 
-  function submit(e: SubmitEvent) {
+  async function submit(e: SubmitEvent) {
     e.preventDefault();
     if (kirim) return;
     const e2: Record<string, string> = {};
@@ -36,7 +36,7 @@ export default function Setor() {
     setErr(e2);
     if (Object.keys(e2).length) return;
     setKirim(true);
-    const h = ajukan({
+    const h = await ajukan({
       jenis: "setor",
       jumlahUsd: n!,
       tanggalTransfer: tgl,

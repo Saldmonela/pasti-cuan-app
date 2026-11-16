@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
         basePath: previewBase,
         // GitHub Pages menyajikan /kelola/ dari /kelola/index.html
         trailingSlash: true,
+        env: { NEXT_PUBLIC_PROTOTYPE_MODE: "1" },
       }
     : {
         cacheComponents: true,

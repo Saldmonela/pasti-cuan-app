@@ -59,18 +59,18 @@ export default function AntreanPermintaan() {
     setErr({});
   }
 
-  function proses() {
+  async function proses() {
     if (!aksi) return;
     const { p } = aksi;
     if (aksi.jenis === "tolak") {
-      const h = tolak(p.id, alasan);
+      const h = await tolak(p.id, alasan);
       if (!h.ok) return setErr({ alasan: h.pesan });
       tampilkan(`Permintaan ${nama(p.anggotaId)} ditolak.`);
       return setAksi(null);
     }
     const j = parseAngka(jumlah);
     if (j === null || !(j > 0)) return setErr({ jumlah: "Jumlah harus lebih dari 0." });
-    const h = selesaikan(p.id, { tanggalEfektif: tgl, jumlahFinalUsd: j, buktiTransaksi: bukti.trim() || undefined, alasan });
+    const h = await selesaikan(p.id, { tanggalEfektif: tgl, jumlahFinalUsd: j, buktiTransaksi: bukti.trim() || undefined, alasan });
     if (!h.ok) return setErr({ [h.field ?? "form"]: h.pesan });
     tampilkan(`${p.jenis === "setor" ? "Setoran" : "Penarikan"} ${nama(p.anggotaId)} ${usd(j)} selesai. Semua posisi sudah diperbarui.`);
     setAksi(null);

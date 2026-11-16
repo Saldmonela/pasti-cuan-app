@@ -20,10 +20,11 @@ import {
   titikSnapshot,
   titikTerakhir,
   TX_CONTOH,
+  type TitikNilai,
 } from "./onchain";
 import { contohCsv, pratinjau } from "./csv";
 import { dataAwal, snapshotOtomatis, WAKTU_AWAL } from "./seed";
-import type { DataPool, Permintaan } from "./types";
+import type { ArusOnchain, DataPool, Permintaan } from "./types";
 
 const near = (a: number, b: number, tol = 0.01) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol + 1e-9);
 
@@ -488,5 +489,81 @@ describe("estimasi mengikuti harga token pasangan (BR-24 v1.4)", () => {
     const seg = est.filter((t) => t.ms >= ta && t.ms < ms("2026-10-16T20:00:00+07:00"));
     const langkah = seg.slice(1).map((t, i) => t.saldoSol - seg[i].saldoSol);
     for (const l of langkah) near(l, langkah[0], 1e-4);
+  });
+});
+
+describe("Penilaian transaksi onchain pada waktu transfer (BR-18, update 17 Nov 2026)", () => {
+  it("penarikan dicocokkan langsung memotong unit pada waktu transfer tanpa menunggu snapshot 08.00 besok", () => {
+    const d = dataAwal();
+    const tTransfer = "2026-11-15T10:05:00+07:00";
+    const tSesudah = "2026-11-15T12:00:00+07:00";
+    const titikRef: TitikNilai[] = [
+      { id: 101, ms: ms(tTransfer), nilaiUsd: 2076.53, saldoSol: 27.4395, harga: 75.6766 },
+      // Sesudah penarikan Rezki $731,51, isi wallet tinggal $1.345,02 dan harga SOL naik ke $80
+      { id: 102, ms: ms(tSesudah), nilaiUsd: 1345.02, saldoSol: 16.81275, harga: 80 },
+    ];
+    const reqTarik: Permintaan = {
+      id: "p_rezki_onchain",
+      anggotaId: "rezki",
+      jenis: "tarik",
+      jumlahUsd: 731.51,
+      status: "selesai",
+      waktuEfektif: tTransfer,
+      titikNilaiId: 101,
+      jumlahFinalUsd: 731.51,
+      sumber: "app",
+      dibuatPada: tTransfer,
+    };
+    const arus: ArusOnchain[] = [
+      {
+        id: "ar_rezki",
+        signature: "sig_rezki_1",
+        urutan: 0,
+        waktu: tTransfer,
+        arah: "keluar",
+        token: "USDC",
+        simbol: "USDC",
+        jumlah: 731.51,
+        nilaiUsd: 731.51,
+        alamatLawan: "Chtm91xf111111111111111111111111111111111111",
+        status: "dicocokkan",
+        permintaanId: "p_rezki_onchain",
+      },
+    ];
+
+    const resmi = hitungPool(d.anggota, d.snapshots, [...d.permintaan, reqTarik], d.pengaturan, arus, titikRef);
+    expect(resmi.cek.lolos).toBe(true);
+    const rezkiResmi = resmi.posisi.find((x) => x.id === "rezki")!;
+    const salmanResmi = resmi.posisi.find((x) => x.id === "salman")!;
+    expect(rezkiResmi.netUsd).toBeLessThan(100);
+    near(salmanResmi.netUsd, 813.74, 0.05);
+
+    const hasil = terapkanLive(resmi, d.anggota, d.snapshots, arus, titikRef, ms(tSesudah), d.pengaturan);
+    expect(hasil.live).not.toBeNull();
+    // Karena penarikan Rezki sudah diproses pada waktu transfer (10.05), tidak ada lagi arus tertunda yang dinetralkan
+    expect(hasil.live!.arusDinetralkanUsd).toBe(0);
+    near(hasil.pool.nilaiUsd, 1345.02, 0.02);
+    // Nilai USD dan SOL Salman tetap sejalan dengan nilai pool saat ini (100% dari porsi baru sesudah Rezki keluar)
+    const salmanLive = hasil.posisi.find((x) => x.id === "salman")!;
+    near(salmanLive.netUsd, 813.74, 0.05);
+  });
+
+  it("gagal validasi BR-12c bila transaksi onchain tidak punya titik nilai referensi", () => {
+    const d = dataAwal();
+    const reqTanpaTitik: Permintaan = {
+      id: "p_bad",
+      anggotaId: "salman",
+      jenis: "setor",
+      jumlahUsd: 100,
+      status: "selesai",
+      waktuEfektif: "2026-11-15T11:00:00+07:00",
+      titikNilaiId: 9999,
+      jumlahFinalUsd: 100,
+      sumber: "app",
+      dibuatPada: "2026-11-15T11:00:00+07:00",
+    };
+    const h = hitungPool(d.anggota, d.snapshots, [...d.permintaan, reqTanpaTitik], d.pengaturan, [], []);
+    expect(h.cek.lolos).toBe(false);
+    expect(h.cek.penyebab.some((p) => p.includes("titik nilai referensi"))).toBe(true);
   });
 });

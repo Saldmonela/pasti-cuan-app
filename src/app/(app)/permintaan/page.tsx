@@ -9,29 +9,35 @@ import { useStore } from "@/lib/store";
 import type { Permintaan, Status } from "@/lib/types";
 
 type Filter = "menunggu" | "selesai" | "semua";
+type Cakupan = "semua" | "saya";
 
 export default function Transaksi() {
-  const { saya, data, batalkan, tampilkan, skenario, offline } = useStore();
+  const { saya, data, nama, batalkan, tampilkan, skenario, offline } = useStore();
   const [f, setF] = useState<Filter>("semua");
+  const [cakupan, setCakupan] = useState<Cakupan>("semua");
   const [batal, setBatal] = useState<Permintaan | null>(null);
   const [err, setErr] = useState("");
   if (!saya) return null;
   if (skenario === "memuat") return (<><PageHeader judul="Transaksi" /><main><Memuat kartu={2} /></main></>);
   if (skenario === "gagal") return (<><PageHeader judul="Transaksi" /><main><GagalMuat /></main></>);
 
-  const milik = data.permintaan
-    .filter((p) => p.anggotaId === saya.id)
-    .sort((a, b) => ((b.tanggalEfektif ?? b.dibuatPada) > (a.tanggalEfektif ?? a.dibuatPada) ? 1 : -1))
+  const sumber = (cakupan === "saya" ? data.permintaan.filter((p) => p.anggotaId === saya.id) : data.permintaan)
+    .slice()
+    .sort((a, b) => ((b.waktuEfektif ?? b.tanggalEfektif ?? b.dibuatPada) > (a.waktuEfektif ?? a.tanggalEfektif ?? a.dibuatPada) ? 1 : -1))
     .sort((a, b) => Number(b.status === "menunggu") - Number(a.status === "menunggu"));
   const cocok = (s: Status) => (f === "semua" ? true : f === "menunggu" ? s === "menunggu" : s !== "menunggu");
-  const daftar = milik.filter((p) => cocok(p.status));
-  const n = (x: Filter) => milik.filter((p) => (x === "semua" ? true : x === "menunggu" ? p.status === "menunggu" : p.status !== "menunggu")).length;
+  const daftar = sumber.filter((p) => cocok(p.status));
+  const n = (x: Filter) => sumber.filter((p) => (x === "semua" ? true : x === "menunggu" ? p.status === "menunggu" : p.status !== "menunggu")).length;
 
   return (
     <>
       <PageHeader judul="Transaksi" stamp={false} />
       <main>
         <StatusBanners />
+        <div className="tabs" role="group" aria-label="Cakupan anggota" style={{ marginBottom: 8 }}>
+          <button type="button" aria-pressed={cakupan === "semua"} onClick={() => setCakupan("semua")}>Semua anggota</button>
+          <button type="button" aria-pressed={cakupan === "saya"} onClick={() => setCakupan("saya")}>Milik saya</button>
+        </div>
         <div className="tabs" role="group" aria-label="Saring transaksi">
           {(["semua", "menunggu", "selesai"] as Filter[]).map((x) => (
             <button key={x} type="button" aria-pressed={f === x} onClick={() => setF(x)}>
@@ -67,11 +73,12 @@ export default function Transaksi() {
                   <div className="main">
                     <div className="t">
                       {p.jenis === "setor" ? "Setoran" : "Penarikan"}
+                      {cakupan === "semua" ? ` · ${nama(p.anggotaId)}` : ""}
                       <StatusChip s={p.status} />
                     </div>
                     <div className="s">
                       {p.status === "selesai"
-                        ? `Efektif ${tanggal(p.tanggalEfektif!)}${p.sumber === "impor" ? " · dari impor riwayat" : ""}`
+                        ? `Efektif ${p.waktuEfektif ? waktu(p.waktuEfektif) : tanggal(p.tanggalEfektif!)}${p.sumber === "impor" ? " · dari impor riwayat" : ""}`
                         : `Diajukan ${waktu(p.dibuatPada)}`}
                     </div>
                     {p.status === "selesai" && p.jumlahFinalUsd !== undefined && Math.abs(p.jumlahFinalUsd - p.jumlahUsd) > 0.004 && (
@@ -81,10 +88,10 @@ export default function Transaksi() {
                     )}
                     {p.status === "ditolak" && <div className="s dn">Ditolak: {p.alasan}</div>}
                     {p.status === "menunggu" && data.arus.some((a) => a.permintaanId === p.id) && (
-                      <div className="s up">Transfer sudah terlihat di wallet. Angka final dihitung di snapshot resmi berikutnya.</div>
+                      <div className="s up">Transfer sudah terlihat di wallet. Menunggu pencocokan pengelola.</div>
                     )}
                     {p.catatan && <div className="s">Catatan: {p.catatan}</div>}
-                    {p.status === "menunggu" && (
+                    {p.status === "menunggu" && p.anggotaId === saya.id && (
                       <div className="acts">
                         <button type="button" className="btn ghost sm" disabled={offline} onClick={() => { setErr(""); setBatal(p); }}>
                           Batalkan
@@ -122,8 +129,8 @@ export default function Transaksi() {
           <button
             type="button"
             className="btn danger"
-            onClick={() => {
-              const h = batalkan(batal!.id);
+            onClick={async () => {
+              const h = await batalkan(batal!.id);
               if (!h.ok) return setErr(h.pesan);
               tampilkan(`Permintaan ${batal!.jenis === "setor" ? "setoran" : "penarikan"} dibatalkan.`);
               setBatal(null);

@@ -14,9 +14,9 @@ const INDUK: Record<string, string> = { "/log": "/lainnya" };
 
 /** Kerangka aplikasi: kolom satu (maks. 480px) di atas kanvas sage, navigasi pil melayang. */
 export default function Shell({ children }: { children: ReactNode }) {
-  const { siap, saya, menunggu, arusBelum } = useStore();
+  const { siap, saya, menunggu, arusBelumCount } = useStore();
   // Badge Kelola: permintaan menunggu + arus onchain yang belum dicocokkan (PRD 3.2, Navigasi)
-  const tugas = menunggu.length + arusBelum.length;
+  const tugas = menunggu.length + arusBelumCount;
   // Build preview memakai trailingSlash ("/pool/"), dev tidak ("/pool"): samakan dulu.
   const mentah = usePathname();
   const path = mentah.length > 1 ? mentah.replace(/\/+$/, "") : mentah;
@@ -65,7 +65,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 <Icon size={20} aria-hidden="true" />
                 {label}
                 {href === "/kelola" && tugas > 0 && (
-                  <span className="badge" aria-label={`${menunggu.length} permintaan menunggu, ${arusBelum.length} transfer belum dicocokkan`}>
+                  <span className="badge" aria-label={`${menunggu.length} permintaan menunggu, ${arusBelumCount} transfer belum dicocokkan`}>
                     {tugas}
                   </span>
                 )}

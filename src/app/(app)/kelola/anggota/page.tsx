@@ -17,9 +17,9 @@ export default function Anggota() {
   if (!saya) return null;
   if (saya.peran !== "pengelola") return (<><BackBar judul="Anggota" ke="/kelola" /><main><KhususPengelola /></main></>);
 
-  function submit(e: SubmitEvent) {
+  async function submit(e: SubmitEvent) {
     e.preventDefault();
-    const h = tambahAnggota({ nama: nm, email: em, peran, alamatWallet: alamat.split(/[\s,]+/).filter(Boolean) });
+    const h = await tambahAnggota({ nama: nm, email: em, peran, alamatWallet: alamat.split(/[\s,]+/).filter(Boolean) });
     if (!h.ok) return setErr({ [h.field ?? "form"]: h.pesan });
     tampilkan(`${nm.trim()} ditambahkan. Ia bisa masuk dengan akun Google ${em.trim().toLowerCase()}.`);
     setNm("");
@@ -66,8 +66,8 @@ export default function Anggota() {
                           className="btn ghost sm"
                           style={{ marginLeft: -12 }}
                           disabled={offline}
-                          onClick={() => {
-                            const h = setAktif(a.id, !a.aktif);
+                          onClick={async () => {
+                            const h = await setAktif(a.id, !a.aktif);
                             setErrBaris({ [a.id]: h.ok ? "" : h.pesan });
                             if (h.ok) tampilkan(`${a.nama} ${a.aktif ? "dinonaktifkan. Riwayatnya tetap tersimpan." : "diaktifkan lagi."}`);
                           }}

@@ -1,13 +1,16 @@
 "use client";
-// Store prototype: data contoh di localStorage, menggantikan Supabase + API PRD Section 3.1.
-// Setiap aksi menegakkan aturan bisnis yang sama dengan kontrak API (BR-08 s.d. BR-13) dan
-// menulis log audit, lalu semua angka dihitung ulang dari fakta.
+// Store aplikasi Pasti Cuan: otomatis memakai Supabase + API Route Handlers di server/production,
+// dan fallback ke data contoh localStorage khusus saat build preview statis (`NEXT_PUBLIC_PROTOTYPE_MODE=1`).
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { hitungPool, seriRentang, terapkanLive, type HasilPool, type Seri } from "./engine";
 import { selisihHari, tambahHari, tanggal, usd, waktu } from "./format";
 import { isoWib, MENIT, ms, msSnapshot, MULAI_BACA, semuaTitik, titikEstimasi, type TitikNilai } from "./onchain";
 import { dataAwal, snapshotOtomatis, WAKTU_AWAL } from "./seed";
-import type { Anggota, ArusOnchain, DataPool, Jenis, LogAudit, Pengaturan, Peran, Permintaan, ModeSatuan, Rentang, Satuan, Snapshot } from "./types";
+import { createSupabaseBrowserClient } from "./supabase/client";
+import type { Anggota, ArusOnchain, DataPool, Jenis, LogAudit, ModeSatuan, Pengaturan, Peran, Permintaan, Rentang, Satuan, Snapshot } from "./types";
+
+export const IS_PROTOTYPE =
+  process.env.NEXT_PUBLIC_PROTOTYPE_MODE === "1" || !process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 export type Skenario =
   | "normal"
@@ -34,19 +37,17 @@ export const SKENARIO: { id: Skenario; label: string; ket: string }[] = [
   { id: "walletTerganggu", label: "Wallet terganggu", ket: "Tidak ada titik 75 menit (BR-20)" },
 ];
 
-/** Lompatan waktu prototype untuk mencoba snapshot otomatis (BR-18). */
 export const LOMPATAN = [
   { id: "berhasil", ke: "2026-11-16T08:00:00+07:00", label: "16 Nov 2026, 08.00 WIB", ket: "Snapshot otomatis dibuat" },
   { id: "gagal", ke: "2026-11-16T08:31:00+07:00", label: "16 Nov 2026, 08.31 WIB", ket: "Pembacaan 08.00-08.30 gagal" },
 ] as const;
 
-/** Tanggal efektif transfer onchain = tanggal snapshot resmi pertama sesudah transfer (BR-18). */
+/** Waktu efektif transfer onchain (BR-18, update 17 Nov 2026 = waktu transfer). */
 export function tanggalEfektifArus(waktuArus: string, jam = "08:00"): string {
   const tgl = waktuArus.slice(0, 10);
   return ms(waktuArus) < msSnapshot(tgl, jam) ? tgl : tambahHari(tgl, 1);
 }
 
-// Dari halaman Arus ke antrean permintaan: lembar "Tandai selesai" langsung terbuka dengan isian terisi (AC-13-01).
 let tujuanSelesai: { permintaanId?: string; arusId?: string } | null = null;
 export function mintaSelesai(t: { permintaanId?: string; arusId?: string }) {
   tujuanSelesai = t;
@@ -64,7 +65,7 @@ type AksiArus =
   | { status: "biaya"; catatan: string }
   | { status: "bukan_arus"; catatan: string };
 
-type Hasil<T = undefined> = { ok: true; nilai?: T } | { ok: false; pesan: string; field?: string };
+export type Hasil<T = undefined> = { ok: true; nilai?: T } | { ok: false; pesan: string; field?: string };
 
 interface Toast {
   id: number;
@@ -72,31 +73,29 @@ interface Toast {
 }
 
 interface Ctx {
+  isPrototype: boolean;
   siap: boolean;
   data: DataPool;
-  /** Angka untuk tampilan: NAV live bila ada titik nilai sesudah snapshot terakhir. */
   hasil: HasilPool;
-  /** Angka resmi per snapshot terakhir, dasar transaksi. */
   resmi: HasilPool;
   sekarang: number;
-  /** Titik nilai yang tersedia sampai sekarang (menit gagal tidak ada). */
   titik: TitikNilai[];
   titikAkhir: TitikNilai | null;
-  /** Menit sejak titik nilai terakhir (BR-20). */
   lamaLiveMenit: number;
   arus: ArusOnchain[];
   arusBelum: ArusOnchain[];
+  arusBelumCount: number;
+  versiData: string;
   seri: (r: Rentang, anggotaId?: string | null) => Seri;
   majukanWaktu: (id: (typeof LOMPATAN)[number]["id"]) => void;
-  tandaiArus: (ids: string[], a: AksiArus) => Hasil<string>;
-  batalTandai: (id: string) => Hasil;
+  tandaiArus: (ids: string[], a: AksiArus) => Promise<Hasil<string>>;
+  batalTandai: (id: string) => Promise<Hasil>;
   saya: Anggota | null;
   skenario: Skenario;
   hariIni: string;
   dataLama: boolean;
   cekGagal: boolean;
   offline: boolean;
-  /** Satuan aktif untuk angka dan kartu lain; di mode Bandingkan = USD. */
   satuan: Satuan;
   mode: ModeSatuan;
   toast: Toast | null;
@@ -104,44 +103,44 @@ interface Ctx {
   setMode: (m: ModeSatuan) => void;
   setSkenario: (s: Skenario) => void;
   masuk: (id: string) => void;
-  keluar: () => void;
+  keluar: () => Promise<void>;
   reset: () => void;
+  refresh: () => Promise<void>;
   tampilkan: (pesan: string) => void;
   tutupToast: () => void;
   nama: (id: string) => string;
-  ajukan: (p: { jenis: Jenis; jumlahUsd: number; tanggalTransfer?: string; buktiTransaksi?: string; alamatWalletTujuan?: string; catatan?: string }) => Hasil;
-  batalkan: (id: string) => Hasil;
-  selesaikan: (id: string, p: { tanggalEfektif: string; jumlahFinalUsd: number; buktiTransaksi?: string; alasan?: string }) => Hasil;
-  tolak: (id: string, alasan: string) => Hasil;
-  simpanSnapshot: (s: Omit<Snapshot, "dibuatOleh" | "dibuatPada" | "diubahPada" | "sumber">, ubah: boolean) => Hasil;
-  hapusSnapshot: (tgl: string) => Hasil;
-  tambahAnggota: (a: { nama: string; email: string; peran: Peran; alamatWallet?: string[] }) => Hasil;
-  setAktif: (id: string, aktif: boolean) => Hasil;
-  ubahPeran: (id: string, peran: Peran) => Hasil;
-  ubahPengaturan: (p: Partial<Pengaturan>) => Hasil;
-  batalkanImpor: () => Hasil;
-  impor: (snapshots: Snapshot[], transaksi: Permintaan[], estimasi: boolean) => Hasil;
-  buatUlangEstimasi: () => Hasil;
+  ajukan: (p: { jenis: Jenis; jumlahUsd: number; tanggalTransfer?: string; buktiTransaksi?: string; alamatWalletTujuan?: string; catatan?: string }) => Promise<Hasil>;
+  batalkan: (id: string) => Promise<Hasil>;
+  selesaikan: (id: string, p: { tanggalEfektif: string; jumlahFinalUsd: number; buktiTransaksi?: string; alasan?: string }) => Promise<Hasil>;
+  tolak: (id: string, alasan: string) => Promise<Hasil>;
+  simpanSnapshot: (s: Omit<Snapshot, "dibuatOleh" | "dibuatPada" | "diubahPada" | "sumber">, ubah: boolean) => Promise<Hasil>;
+  hapusSnapshot: (tgl: string) => Promise<Hasil>;
+  tambahAnggota: (a: { nama: string; email: string; peran: Peran; alamatWallet?: string[] }) => Promise<Hasil>;
+  setAktif: (id: string, aktif: boolean) => Promise<Hasil>;
+  ubahPeran: (id: string, peran: Peran) => Promise<Hasil>;
+  ubahPengaturan: (p: Partial<Pengaturan>) => Promise<Hasil>;
+  batalkanImpor: () => Promise<Hasil>;
+  impor: (snapshots: Snapshot[], transaksi: Permintaan[], estimasi: boolean) => Promise<Hasil>;
+  buatUlangEstimasi: () => Promise<Hasil>;
 }
 
 const C = createContext<Ctx | null>(null);
-const KUNCI = "pasti-cuan-prototype-v3";
+const KUNCI_PROTO = "pasti-cuan-prototype-v3";
+const KUNCI_CACHE = "pasti-cuan-live-cache-v1";
+const KUNCI_MODE = "pasti-cuan-satuan-mode";
 
 interface Simpanan {
   data: DataPool;
   userId: string | null;
   skenario: Skenario;
   satuan: ModeSatuan;
-  /** Jam prototype (WIB). Bertambah 1 menit tiap menit selama halaman terbuka. */
   waktuDasar: string;
-  /** Rentang waktu tanpa titik nilai (pembacaan gagal). */
   celah: [number, number] | null;
 }
 
 let seq = 0;
 const idBaru = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
 
-// ---------- penyimpanan di luar React (localStorage), dibaca lewat useSyncExternalStore ----------
 const AWAL: Simpanan = { data: dataAwal(), userId: "salman", skenario: "normal", satuan: "USD", waktuDasar: WAKTU_AWAL, celah: null };
 let isi: Simpanan | null = null;
 const pendengar = new Set<() => void>();
@@ -150,7 +149,7 @@ function baca(): Simpanan {
   if (isi) return isi;
   isi = AWAL;
   try {
-    const raw = localStorage.getItem(KUNCI);
+    const raw = localStorage.getItem(KUNCI_PROTO);
     if (raw) {
       const s = JSON.parse(raw) as Simpanan;
       if (s.data?.anggota && s.data.arus) {
@@ -165,16 +164,16 @@ function baca(): Simpanan {
       }
     }
   } catch {
-    /* data rusak: pakai data contoh */
+    /* ignore */
   }
   return isi;
 }
 function tulis(f: (s: Simpanan) => Simpanan) {
   isi = f(baca());
   try {
-    localStorage.setItem(KUNCI, JSON.stringify(isi));
+    localStorage.setItem(KUNCI_PROTO, JSON.stringify(isi));
   } catch {
-    /* penyimpanan penuh atau diblokir: tetap jalan di memori */
+    /* ignore */
   }
   pendengar.forEach((l) => l());
 }
@@ -184,42 +183,200 @@ function dengar(l: () => void) {
 }
 const tanpaLangganan = () => () => {};
 
+interface LiveSnapshotPayload {
+  saya: Anggota | null;
+  versi_data: string;
+  sekarang: number;
+  data: DataPool;
+  titik: TitikNilai[];
+  arusBelumCount: number;
+}
+
+const EMPTY_POOL: DataPool = {
+  anggota: [],
+  snapshots: [],
+  permintaan: [],
+  arus: [],
+  estimasi: false,
+  log: [],
+  pengaturan: AWAL.data.pengaturan,
+};
+
+async function apiJson<T = Record<string, unknown>>(
+  url: string,
+  method: string,
+  body?: unknown,
+): Promise<{ ok: true; data: T } | { ok: false; pesan: string; field?: string }> {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 204) return { ok: true, data: {} as T };
+    const json = (await res.json().catch(() => ({}))) as {
+      pesan?: string;
+      detail?: Record<string, string>;
+    } & T;
+    if (!res.ok) {
+      const firstField = json.detail ? Object.keys(json.detail)[0] : undefined;
+      return { ok: false, pesan: json.pesan ?? `Gagal (${res.status}).`, field: firstField };
+    }
+    return { ok: true, data: json };
+  } catch {
+    return { ok: false, pesan: "Koneksi gagal. Cek internet kamu lalu coba lagi." };
+  }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
-  // siap = sudah di browser; server dan render pertama memakai data awal supaya hidrasi cocok
-  const siap = useSyncExternalStore(tanpaLangganan, () => true, () => false);
-  const { data, userId, skenario, satuan, waktuDasar, celah } = useSyncExternalStore(dengar, baca, () => AWAL);
+  const browserReady = useSyncExternalStore(tanpaLangganan, () => true, () => false);
+  const proto = useSyncExternalStore(dengar, baca, () => AWAL);
   const [toast, setToast] = useState<Toast | null>(null);
-  // Jam berjalan: Beranda dan Pool memuat ulang angka tiap 60 detik selama tab aktif (PRD 3.2, Pembaruan angka)
   const [menit, setMenit] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (document.visibilityState === "visible") setMenit((m) => m + 1);
-    }, 60_000);
-    return () => clearInterval(id);
+
+  // State khusus mode Live Supabase
+  const [liveState, setLiveState] = useState<LiveSnapshotPayload | null>(null);
+  const [liveReady, setLiveReady] = useState(false);
+  const [liveLoadErr, setLiveLoadErr] = useState(false);
+  const [isOfflineNet, setIsOfflineNet] = useState(false);
+  const [fallbackNow] = useState(() => ms(WAKTU_AWAL));
+  const [liveMode, setLiveMode] = useState<ModeSatuan>(() => {
+    if (typeof window === "undefined") return "USD";
+    const saved = window.localStorage.getItem(KUNCI_MODE);
+    return saved === "SOL" || saved === "Bandingkan" ? saved : "USD";
+  });
+
+  const refreshLive = useCallback(async () => {
+    if (IS_PROTOTYPE) return;
+    try {
+      const res = await fetch("/api/posisi", { cache: "no-store" });
+      if (res.status === 401 || res.status === 403) {
+        setLiveState(null);
+        setLiveLoadErr(false);
+        setLiveReady(true);
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = (await res.json()) as LiveSnapshotPayload;
+      setLiveState(payload);
+      setLiveLoadErr(false);
+      setIsOfflineNet(false);
+      setLiveReady(true);
+      try {
+        localStorage.setItem(KUNCI_CACHE, JSON.stringify(payload));
+      } catch {
+        /* ignore */
+      }
+    } catch {
+      try {
+        const cached = localStorage.getItem(KUNCI_CACHE);
+        if (cached) {
+          setLiveState(JSON.parse(cached) as LiveSnapshotPayload);
+        } else {
+          setLiveLoadErr(true);
+        }
+      } catch {
+        setLiveLoadErr(true);
+      }
+      setIsOfflineNet(typeof navigator !== "undefined" ? !navigator.onLine : false);
+      setLiveReady(true);
+    }
   }, []);
+
+  useEffect(() => {
+    if (IS_PROTOTYPE) {
+      const id = setInterval(() => {
+        if (document.visibilityState === "visible") setMenit((m) => m + 1);
+      }, 60_000);
+      return () => clearInterval(id);
+    }
+
+    const initId = setTimeout(() => {
+      void refreshLive();
+    }, 0);
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") void refreshLive();
+    }, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshLive();
+    };
+    const onNet = () => {
+      setIsOfflineNet(!navigator.onLine);
+      if (navigator.onLine) void refreshLive();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onNet);
+    window.addEventListener("offline", onNet);
+    return () => {
+      clearTimeout(initId);
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onNet);
+      window.removeEventListener("offline", onNet);
+    };
+  }, [refreshLive]);
+
   const setData = (f: (d: DataPool) => DataPool) => tulis((s) => ({ ...s, data: f(s.data) }));
   const setUserId = (id: string | null) => tulis((s) => ({ ...s, userId: id }));
   const setSkenarioState = (k: Skenario) => tulis((s) => ({ ...s, skenario: k }));
-  const setModeState = (m: ModeSatuan) => tulis((s) => ({ ...s, satuan: m }));
+  const setModeState = (m: ModeSatuan) => {
+    if (IS_PROTOTYPE) {
+      tulis((s) => ({ ...s, satuan: m }));
+    } else {
+      setLiveMode(m);
+      try {
+        localStorage.setItem(KUNCI_MODE, m);
+      } catch {
+        /* ignore */
+      }
+    }
+  };
 
-  const sekarang = ms(waktuDasar) + menit * MENIT;
-  // Skenario BR-20: pembacaan wallet gagal 20 atau 75 menit terakhir
-  const gagalMenit = skenario === "liveLama" ? 20 : skenario === "walletTerganggu" ? 75 : 0;
-  // Titik estimasi per jam untuk riwayat impor (BR-24), hanya untuk grafik. Titik asli menggantikannya mulai MULAI_BACA.
-  const estimasi = useMemo(
-    () => (data.estimasi ? titikEstimasi(data.snapshots.filter((x) => x.sumber === "impor"), data.permintaan, MULAI_BACA, data.pengaturan.jamSnapshot) : []),
+  const data = IS_PROTOTYPE ? proto.data : (liveState?.data ?? EMPTY_POOL);
+  const satuan = IS_PROTOTYPE ? proto.satuan : liveMode;
+  const skenario: Skenario = IS_PROTOTYPE
+    ? proto.skenario
+    : !liveReady
+      ? "memuat"
+      : liveLoadErr
+        ? "gagal"
+        : isOfflineNet
+          ? "offline"
+          : "normal";
+
+  const sekarang = IS_PROTOTYPE ? ms(proto.waktuDasar) + menit * MENIT : (liveState?.sekarang ?? fallbackNow);
+  const gagalMenit = IS_PROTOTYPE ? (skenario === "liveLama" ? 20 : skenario === "walletTerganggu" ? 75 : 0) : 0;
+
+  const estimasiProto = useMemo(
+    () =>
+      IS_PROTOTYPE && data.estimasi
+        ? titikEstimasi(
+            data.snapshots.filter((x) => x.sumber === "impor"),
+            data.permintaan,
+            MULAI_BACA,
+            data.pengaturan.jamSnapshot,
+          )
+        : [],
     [data.estimasi, data.snapshots, data.permintaan, data.pengaturan.jamSnapshot],
   );
+
   const titik = useMemo(() => {
+    if (!IS_PROTOTYPE) return liveState?.titik ?? [];
     const batas = sekarang - gagalMenit * MENIT;
-    const asli = semuaTitik().filter((t) => t.ms <= (gagalMenit ? batas : sekarang) && !(celah && t.ms >= celah[0] && t.ms <= celah[1]));
-    return [...estimasi.filter((t) => t.ms < MULAI_BACA), ...asli];
-  }, [sekarang, gagalMenit, celah, estimasi]);
+    const asli = semuaTitik().filter(
+      (t) => t.ms <= (gagalMenit ? batas : sekarang) && !(proto.celah && t.ms >= proto.celah[0] && t.ms <= proto.celah[1]),
+    );
+    return [...estimasiProto.filter((t) => t.ms < MULAI_BACA), ...asli];
+  }, [liveState?.titik, sekarang, gagalMenit, proto.celah, estimasiProto]);
+
   const titikAkhir = titik.length && !titik[titik.length - 1].estimasi ? titik[titik.length - 1] : null;
-  const arus = useMemo(() => data.arus.filter((a) => ms(a.waktu) <= sekarang), [data.arus, sekarang]);
+  const arus = useMemo(
+    () => (IS_PROTOTYPE ? data.arus.filter((a) => ms(a.waktu) <= sekarang) : data.arus),
+    [data.arus, sekarang],
+  );
   const resmi = useMemo(
-    () => hitungPool(data.anggota, data.snapshots, data.permintaan, data.pengaturan, arus),
-    [data.anggota, data.snapshots, data.permintaan, data.pengaturan, arus],
+    () => hitungPool(data.anggota, data.snapshots, data.permintaan, data.pengaturan, arus, titik),
+    [data.anggota, data.snapshots, data.permintaan, data.pengaturan, arus, titik],
   );
   const hasil = useMemo(
     () => terapkanLive(resmi, data.anggota, data.snapshots, arus, titik, sekarang, data.pengaturan),
@@ -227,12 +384,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
   const lamaLiveMenit = titikAkhir ? Math.floor((sekarang - titikAkhir.ms) / MENIT) : Infinity;
   const arusBelum = arus.filter((a) => a.status === "belum");
-  const saya = data.anggota.find((a) => a.id === userId && a.aktif) ?? null;
-  const hariIni = skenario === "dataLama" && hasil.tanggalData ? tambahHari(hasil.tanggalData, 3) : isoWib(sekarang).slice(0, 10);
+  const arusBelumCount = IS_PROTOTYPE ? arusBelum.length : (liveState?.arusBelumCount ?? 0);
+  const saya = IS_PROTOTYPE ? (data.anggota.find((a) => a.id === proto.userId && a.aktif) ?? null) : (liveState?.saya ?? null);
+  const hariIni =
+    IS_PROTOTYPE && skenario === "dataLama" && hasil.tanggalData
+      ? tambahHari(hasil.tanggalData, 3)
+      : isoWib(sekarang).slice(0, 10);
   const dataLama = !!hasil.tanggalData && selisihHari(hasil.tanggalData, hariIni) > data.pengaturan.batasDataLamaHari;
-  const cekGagal = skenario === "cekGagal" || !hasil.cek.lolos;
-  const offline = skenario === "offline";
+  const cekGagal = (IS_PROTOTYPE && skenario === "cekGagal") || !hasil.cek.lolos;
+  const offline = IS_PROTOTYPE ? skenario === "offline" : isOfflineNet;
   const menunggu = data.permintaan.filter((p) => p.status === "menunggu");
+  const versiData = liveState?.versi_data ?? "";
 
   const nama = useCallback((id: string) => data.anggota.find((a) => a.id === id)?.nama ?? id, [data.anggota]);
   const tampilkan = useCallback((pesan: string) => setToast({ id: Date.now(), pesan }), []);
@@ -241,14 +403,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   function ubah(f: (d: DataPool) => DataPool, log?: Omit<LogAudit, "id" | "pada" | "oleh">) {
     setData((d) => {
       const baru = f(d);
-      return log ? { ...baru, log: [{ ...log, id: idBaru("l"), pada: kini(), oleh: userId ?? "sistem" }, ...baru.log] } : baru;
+      return log ? { ...baru, log: [{ ...log, id: idBaru("l"), pada: kini(), oleh: proto.userId ?? "sistem" }, ...baru.log] } : baru;
     });
   }
 
   const offlineErr: Hasil = { ok: false, pesan: "Kamu sedang offline. Form dinonaktifkan sampai koneksi kembali." };
 
   const ctx: Ctx = {
-    siap,
+    isPrototype: IS_PROTOTYPE,
+    siap: IS_PROTOTYPE ? browserReady : liveReady,
     data,
     hasil,
     resmi,
@@ -258,10 +421,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     lamaLiveMenit,
     arus,
     arusBelum,
+    arusBelumCount,
+    versiData,
     seri: (r, anggotaId = null) =>
       seriRentang({ h: resmi, anggota: data.anggota, snaps: data.snapshots, permintaan: data.permintaan, arus, titik, sekarang, set: data.pengaturan }, r, anggotaId),
 
     majukanWaktu(id) {
+      if (!IS_PROTOTYPE) return;
       const l = LOMPATAN.find((x) => x.id === id)!;
       const tgl = l.ke.slice(0, 10);
       const gagal = id === "gagal";
@@ -298,8 +464,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       tampilkan(gagal ? "Waktu prototype: 16 Nov 08.31. Pembacaan wallet 08.00-08.30 gagal." : "Waktu prototype: 16 Nov 08.00. Snapshot otomatis dibuat.");
     },
 
-    tandaiArus(ids, a) {
+    async tandaiArus(ids, a) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson<{ pesan?: string }>("/api/arus-onchain/tandai", "POST", {
+          ids,
+          status: a.status,
+          permintaan_id: a.status === "dicocokkan" ? a.permintaanId : undefined,
+          anggota_id: a.status === "buat" ? a.anggotaId : undefined,
+          catatan: a.status === "biaya" || a.status === "bukan_arus" ? a.catatan : undefined,
+          alasan_selisih: a.status === "dicocokkan" || a.status === "buat" ? a.alasanSelisih : undefined,
+        });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true, nilai: res.data.pesan };
+      }
+
       if (saya?.peran !== "pengelola") return { ok: false, pesan: "Halaman ini khusus pengelola." };
       const pilih = data.arus.filter((x) => ids.includes(x.id));
       if (!pilih.length) return { ok: false, pesan: "Pilih minimal satu transfer." };
@@ -316,13 +496,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (c.length > 200) return { ok: false, pesan: "Catatan maksimal 200 karakter.", field: "catatan" };
         ubah(
           (d) => ({ ...d, arus: d.arus.map((x) => (ids.includes(x.id) ? { ...x, status: a.status, catatan: c, ...ditandai } : x)) }),
-          {
-            tabel: "arus",
-            aksi: "update",
-            ringkasan: `Menandai transfer ${kapan} ${usd(total)} sebagai ${a.status === "biaya" ? "biaya pool" : "bukan arus"}: ${c}`,
-            nilaiLama: "belum",
-            nilaiBaru: a.status,
-          },
+          { tabel: "arus", aksi: "update", ringkasan: `Menandai transfer ${kapan} ${usd(total)} sebagai ${a.status === "biaya" ? "biaya pool" : "bukan arus"}: ${c}`, nilaiLama: "belum", nilaiBaru: a.status },
         );
         return { ok: true, nilai: a.status === "biaya" ? `Transfer ${kapan} ditandai biaya pool.` : `Transfer ${kapan} ditandai bukan arus.` };
       }
@@ -336,11 +510,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (ada.jenis !== jenis) return { ok: false, pesan: `Transfer ${arah} hanya bisa dicocokkan dengan ${arah === "masuk" ? "setoran" : "penarikan"}.` };
         const selisih = (Math.abs(total - ada.jumlahUsd) / ada.jumlahUsd) * 100;
         if (selisih > data.pengaturan.toleransiCocokPersen && !a.alasanSelisih?.trim()) {
-          return {
-            ok: false,
-            pesan: `Jumlah transfer ${usd(total)} berbeda dari permintaan ${usd(ada.jumlahUsd)}. Isi alasan untuk melanjutkan.`,
-            field: "alasan",
-          };
+          return { ok: false, pesan: `Jumlah transfer ${usd(total)} berbeda dari permintaan ${usd(ada.jumlahUsd)}. Isi alasan untuk melanjutkan.`, field: "alasan" };
         }
         p = ada;
       } else {
@@ -369,27 +539,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (d) => ({
           ...d,
           permintaan: a.status === "buat" ? [...d.permintaan, p] : d.permintaan,
-          arus: d.arus.map((x) =>
-            ids.includes(x.id) ? { ...x, status: "dicocokkan", permintaanId: p.id, alasanSelisih, ...ditandai } : x,
-          ),
+          arus: d.arus.map((x) => (ids.includes(x.id) ? { ...x, status: "dicocokkan", permintaanId: p.id, alasanSelisih, ...ditandai } : x)),
         }),
-        {
-          tabel: "arus",
-          aksi: "update",
-          ringkasan: `${a.status === "buat" ? "Membuat permintaan dan mencocokkan" : "Mencocokkan"} transfer ${kapan} (${usd(total)}) dengan ${label}.`,
-          nilaiLama: "belum",
-          nilaiBaru: "dicocokkan",
-        },
+        { tabel: "arus", aksi: "update", ringkasan: `${a.status === "buat" ? "Membuat permintaan dan mencocokkan" : "Mencocokkan"} transfer ${kapan} (${usd(total)}) dengan ${label}.`, nilaiLama: "belum", nilaiBaru: "dicocokkan" },
       );
       return { ok: true, nilai: `Transfer ${kapan} dicocokkan dengan ${label}.` };
     },
 
-    batalTandai(id) {
+    async batalTandai(id) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson(`/api/arus-onchain/tandai?id=${encodeURIComponent(id)}`, "DELETE");
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       if (saya?.peran !== "pengelola") return { ok: false, pesan: "Halaman ini khusus pengelola." };
       const x = data.arus.find((a) => a.id === id);
       if (!x || x.status === "belum") return { ok: false, pesan: "Transfer ini belum ditandai." };
-      // AC-13-02: hanya selama snapshot resmi yang memakai arus ini belum dibuat
       const dipakai = data.snapshots.find((sn) => msSnapshot(sn.tanggal, data.pengaturan.jamSnapshot) > ms(x.waktu));
       if (dipakai) return { ok: false, pesan: `Transfer ini sudah dipakai snapshot ${tanggal(dipakai.tanggal)}. Perbaiki lewat koreksi saldo.` };
       const p = data.permintaan.find((q) => q.id === x.permintaanId);
@@ -405,6 +572,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
       return { ok: true };
     },
+
     saya,
     skenario,
     hariIni,
@@ -418,21 +586,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setMode: setModeState,
     setSkenario: setSkenarioState,
     masuk: (id) => setUserId(id),
-    keluar: () => setUserId(null),
+    async keluar() {
+      if (IS_PROTOTYPE) {
+        setUserId(null);
+        return;
+      }
+      const sb = createSupabaseBrowserClient();
+      if (sb) await sb.auth.signOut();
+      setLiveState(null);
+      try {
+        localStorage.removeItem(KUNCI_CACHE);
+      } catch {
+        /* ignore */
+      }
+    },
     reset: () => {
+      if (!IS_PROTOTYPE) return;
       setMenit(0);
       tulis((st) => ({ ...st, data: dataAwal(), skenario: "normal", waktuDasar: WAKTU_AWAL, celah: null }));
       tampilkan("Data contoh dikembalikan ke kondisi awal.");
     },
+    refresh: refreshLive,
     tampilkan,
     tutupToast: () => setToast(null),
     nama,
 
-    ajukan(p) {
+    async ajukan(p) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson("/api/permintaan", "POST", {
+          jenis: p.jenis,
+          jumlah_usd: p.jumlahUsd,
+          tanggal_transfer: p.tanggalTransfer,
+          bukti_transaksi: p.buktiTransaksi,
+          alamat_wallet_tujuan: p.alamatWalletTujuan,
+          catatan: p.catatan,
+          versi_data: p.jenis === "tarik" ? versiData : undefined,
+        });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
+
       if (!saya) return { ok: false, pesan: "Sesi kamu berakhir. Silakan masuk lagi." };
       if (!(p.jumlahUsd > 0)) return { ok: false, pesan: "Jumlah harus lebih dari 0.", field: "jumlah" };
-      // BR-08: maksimal 1 permintaan menunggu per investor per jenis
       if (data.permintaan.some((x) => x.anggotaId === saya.id && x.jenis === p.jenis && x.status === "menunggu")) {
         return {
           ok: false,
@@ -458,8 +655,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    batalkan(id) {
+    async batalkan(id) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson(`/api/permintaan/${id}/batal`, "POST");
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       const p = data.permintaan.find((x) => x.id === id);
       if (!p || p.anggotaId !== saya?.id) return { ok: false, pesan: "Kamu hanya bisa membatalkan permintaan milikmu sendiri." };
       if (p.status !== "menunggu") return { ok: false, pesan: "Permintaan ini sudah diproses dan tidak bisa dibatalkan." };
@@ -476,12 +679,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    selesaikan(id, q) {
+    async selesaikan(id, q) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson(`/api/permintaan/${id}/selesai`, "POST", {
+          tanggal_efektif: q.tanggalEfektif,
+          jumlah_final_usd: q.jumlahFinalUsd,
+          bukti_transaksi: q.buktiTransaksi,
+          alasan: q.alasan,
+        });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       if (saya?.peran !== "pengelola") return { ok: false, pesan: "Halaman ini khusus pengelola." };
       const p = data.permintaan.find((x) => x.id === id);
       if (!p || p.status !== "menunggu") return { ok: false, pesan: "Permintaan ini sudah diproses." };
-      // BR-10: tanggal efektif wajib punya snapshot
       if (!data.snapshots.some((s) => s.tanggal === q.tanggalEfektif)) {
         const jam = data.pengaturan.jamSnapshot.replace(":", ".");
         return {
@@ -508,7 +721,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         diprosesPada: kini(),
       };
       if (p.jenis === "tarik") {
-        // BR-09: hitung ulang dengan penarikan ini; tolak jika melebihi nilai bersih pada tanggal efektif
         const uji = hitungPool(data.anggota, data.snapshots, data.permintaan.map((x) => (x.id === id ? final : x)), data.pengaturan);
         const nm = nama(p.anggotaId);
         if (uji.cek.penyebab.some((s) => s.startsWith(`Penarikan ${nm}`))) {
@@ -535,8 +747,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    tolak(id, alasan) {
+    async tolak(id, alasan) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson(`/api/permintaan/${id}/tolak`, "POST", { alasan });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       if (saya?.peran !== "pengelola") return { ok: false, pesan: "Halaman ini khusus pengelola." };
       if (!alasan.trim()) return { ok: false, pesan: "Alasan penolakan wajib diisi.", field: "alasan" };
       const p = data.permintaan.find((x) => x.id === id);
@@ -548,25 +766,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             x.id === id ? { ...x, status: "ditolak", alasan: alasan.trim(), diprosesOleh: saya.id, diprosesPada: kini() } : x,
           ),
         }),
-        {
-          tabel: "permintaan",
-          aksi: "update",
-          ringkasan: `Menolak ${p.jenis === "setor" ? "setoran" : "penarikan"} ${nama(p.anggotaId)} ${usd(p.jumlahUsd)}: ${alasan.trim()}`,
-          nilaiLama: "menunggu",
-          nilaiBaru: "ditolak",
-        },
+        { tabel: "permintaan", aksi: "update", ringkasan: `Menolak ${p.jenis === "setor" ? "setoran" : "penarikan"} ${nama(p.anggotaId)} ${usd(p.jumlahUsd)}: ${alasan.trim()}`, nilaiLama: "menunggu", nilaiBaru: "ditolak" },
       );
       return { ok: true };
     },
 
-    simpanSnapshot(s, ubahLama) {
+    async simpanSnapshot(s, ubahLama) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = ubahLama
+          ? await apiJson(`/api/snapshot/${s.tanggal}`, "PATCH", {
+              nilai_usd: s.nilaiUsd,
+              saldo_sol: s.saldoSol,
+              fee_lp_diklaim_sol: s.feeLpDiklaimSol,
+              catatan: s.catatan,
+              alasan: s.alasan,
+              konfirmasi_hitung_ulang: true,
+            })
+          : await apiJson("/api/snapshot", "POST", {
+              tanggal: s.tanggal,
+              nilai_usd: s.nilaiUsd,
+              saldo_sol: s.saldoSol,
+              fee_lp_diklaim_sol: s.feeLpDiklaimSol,
+              catatan: s.catatan,
+            });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       if (saya?.peran !== "pengelola") return { ok: false, pesan: "Halaman ini khusus pengelola." };
       const ada = data.snapshots.find((x) => x.tanggal === s.tanggal);
       if (!ubahLama && ada) {
         return { ok: false, pesan: `Saldo untuk ${tanggal(s.tanggal)} sudah ada. Ubah data yang ada atau pilih tanggal lain.`, field: "tanggal" };
       }
-      // AC-02-02: snapshot otomatis yang diubah menjadi `koreksi`, alasan wajib
       const jadiKoreksi = ubahLama && ada && (ada.sumber === "otomatis" || ada.sumber === "koreksi");
       if (jadiKoreksi && !s.alasan?.trim()) return { ok: false, pesan: "Alasan koreksi wajib diisi.", field: "alasan" };
       const rec: Snapshot = ubahLama && ada
@@ -587,8 +819,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    hapusSnapshot(tgl) {
+    async hapusSnapshot(tgl) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson(`/api/snapshot/${tgl}`, "DELETE");
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       if (data.permintaan.some((p) => p.status === "selesai" && p.tanggalEfektif === tgl)) {
         return { ok: false, pesan: `Saldo ${tanggal(tgl)} dipakai sebagai tanggal efektif transaksi, jadi hanya bisa diubah.` };
       }
@@ -602,8 +840,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    tambahAnggota(a) {
+    async tambahAnggota(a) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson("/api/anggota", "POST", {
+          nama: a.nama,
+          email: a.email,
+          peran: a.peran,
+          alamat_wallet: a.alamatWallet,
+        });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       const nm = a.nama.trim();
       const em = a.email.trim().toLowerCase();
       if (nm.length < 2 || nm.length > 40) return { ok: false, pesan: "Nama harus 2 sampai 40 karakter.", field: "nama" };
@@ -617,16 +866,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return { ok: false, pesan: "Alamat wallet Solana harus 32-44 karakter (huruf dan angka base58).", field: "alamat" };
       }
       const baru: Anggota = { id: idBaru("a"), nama: nm, email: em, peran: a.peran, aktif: true, alamatWallet: alamat.length ? alamat : undefined, dibuatPada: kini() };
-      ubah((d) => ({ ...d, anggota: [...d.anggota, baru] }), {
-        tabel: "anggota",
-        aksi: "insert",
-        ringkasan: `Menambah anggota ${nm} (${a.peran}).`,
-      });
+      ubah((d) => ({ ...d, anggota: [...d.anggota, baru] }), { tabel: "anggota", aksi: "insert", ringkasan: `Menambah anggota ${nm} (${a.peran}).` });
       return { ok: true };
     },
 
-    setAktif(id, aktif) {
+    async setAktif(id, aktif) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson(`/api/anggota/${id}`, "PATCH", { aktif });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       const pos = hasil.posisi.find((p) => p.id === id);
       const nm = nama(id);
       if (!aktif && pos && pos.unit > 1e-9) {
@@ -640,8 +891,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    ubahPeran(id, peran) {
+    async ubahPeran(id, peran) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson(`/api/anggota/${id}`, "PATCH", { peran });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       ubah((d) => ({ ...d, anggota: d.anggota.map((x) => (x.id === id ? { ...x, peran } : x)) }), {
         tabel: "anggota",
         aksi: "update",
@@ -650,8 +907,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    ubahPengaturan(p) {
+    async ubahPengaturan(p) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson("/api/pengaturan", "PATCH", {
+          fee_persen: p.feePersen,
+          satuan_dasar_fee: p.satuanDasarFee,
+          batas_data_lama_hari: p.batasDataLamaHari,
+          ambang_lonjakan_persen: p.ambangLonjakanPersen,
+          ambang_likuiditas_token_usd: p.ambangLikuiditasTokenUsd,
+          ambang_dust_usd: p.ambangDustUsd,
+          batas_live_lama_menit: p.batasLiveLamaMenit,
+          toleransi_cocok_persen: p.toleransiCocokPersen,
+        });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       const lama = data.pengaturan;
       const beda = (Object.keys(p) as (keyof Pengaturan)[]).filter((k) => p[k] !== lama[k]);
       if (!beda.length) return { ok: true };
@@ -665,7 +937,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    batalkanImpor() {
+    async batalkanImpor() {
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson("/api/impor", "DELETE");
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       if (data.permintaan.some((p) => p.sumber === "app" && p.status === "selesai")) {
         return { ok: false, pesan: "Impor tidak bisa dibatalkan karena sudah ada transaksi baru yang diproses lewat app." };
       }
@@ -677,8 +955,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    impor(snaps, transaksi, est) {
+    async impor(snaps, transaksi, est) {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson("/api/impor", "POST", { snapshots: snaps, transaksi, estimasi: est });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       if (data.snapshots.some((x) => x.sumber === "impor") || data.permintaan.some((p) => p.status === "selesai")) {
         return { ok: false, pesan: "Pool sudah punya data. Batalkan impor yang lama dulu." };
       }
@@ -690,17 +974,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           permintaan: [...transaksi, ...d.permintaan],
           estimasi: est,
         }),
-        {
-          tabel: "impor",
-          aksi: "insert",
-          ringkasan: `Mengimpor riwayat: ${snaps.length} saldo harian dan ${transaksi.length} transaksi${est ? ", dengan titik estimasi per jam" : ", tanpa titik estimasi"}.`,
-        },
+        { tabel: "impor", aksi: "insert", ringkasan: `Mengimpor riwayat: ${snaps.length} saldo harian dan ${transaksi.length} transaksi${est ? ", dengan titik estimasi per jam" : ", tanpa titik estimasi"}.` },
       );
       return { ok: true };
     },
 
-    buatUlangEstimasi() {
+    async buatUlangEstimasi() {
       if (offline) return offlineErr;
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson("/api/impor/estimasi", "POST");
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
       if (saya?.peran !== "pengelola") return { ok: false, pesan: "Halaman ini khusus pengelola." };
       ubah((d) => ({ ...d, estimasi: true }), {
         tabel: "impor",

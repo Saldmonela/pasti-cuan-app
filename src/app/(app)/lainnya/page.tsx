@@ -75,8 +75,8 @@ export default function Lainnya() {
             <li>
               <button
                 type="button"
-                onClick={() => {
-                  keluar();
+                onClick={async () => {
+                  await keluar();
                   router.replace("/masuk");
                 }}
               >

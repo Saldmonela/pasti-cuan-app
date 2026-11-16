@@ -1,0 +1,27 @@
+name: Supabase Weekly DB Backup (NF-06)
+
+on:
+  schedule:
+    # Setiap Minggu jam 04.00 WIB (Sabtu 21.00 UTC)
+    - cron: "0 21 * * 6"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Dump schema dan data database
+        run: |
+          mkdir -p backups
+          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" -f backups/schema.sql
+          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --data-only -f backups/data.sql
+      - name: Simpan backup sebagai artifact workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: pasti-cuan-db-backup-${{ github.run_id }}
+          path: backups/*.sql
+          retention-days: 90

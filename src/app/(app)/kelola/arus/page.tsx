@@ -14,10 +14,13 @@ type Filter = "belum" | "ditandai" | "semua";
 type Mode = "cocok" | "buat" | "biaya" | "bukan_arus";
 
 const LABEL_STATUS: Record<StatusArus, string> = { belum: "Belum dicocokkan", dicocokkan: "Dicocokkan", biaya: "Biaya pool", bukan_arus: "Bukan arus" };
-const jumlahToken = (a: ArusOnchain) => `${angka(a.jumlah, a.token === "SOL" ? 4 : a.jumlah < 1 ? 3 : 2)} ${a.token}`;
+const jumlahToken = (a: ArusOnchain) => {
+  const lbl = a.simbol ?? a.token;
+  return `${angka(a.jumlah, lbl === "SOL" ? 4 : a.jumlah < 1 ? 3 : 2)} ${lbl}`;
+};
 
 export default function Arus() {
-  const { saya, data, arus, nama, tandaiArus, batalTandai, tampilkan, offline, hariIni } = useStore();
+  const { isPrototype, saya, data, arus, nama, tandaiArus, batalTandai, tampilkan, offline, hariIni } = useStore();
   const router = useRouter();
   const [f, setF] = useState<Filter>("belum");
   const [buka, setBuka] = useState<ArusOnchain | null>(null);
@@ -74,20 +77,20 @@ export default function Arus() {
   const calon = buka ? menunggu.filter((p) => p.jenis === jenisArus(buka)) : [];
   const saranId = new Set(buka ? saran(buka).map((s) => s.p.id) : []);
 
-  function simpan() {
+  async function simpan() {
     if (!buka) return;
     const h =
       mode === "cocok"
-        ? tandaiArus(ids, { status: "dicocokkan", permintaanId: pid, alasanSelisih: alasan })
+        ? await tandaiArus(ids, { status: "dicocokkan", permintaanId: pid, alasanSelisih: alasan })
         : mode === "buat"
-          ? tandaiArus(ids, { status: "buat", anggotaId: aid })
-          : tandaiArus([buka.id], { status: mode, catatan });
+          ? await tandaiArus(ids, { status: "buat", anggotaId: aid })
+          : await tandaiArus([buka.id], { status: mode, catatan });
     if (!h.ok) return setErr({ [h.field ?? "form"]: h.pesan });
     tampilkan(h.nilai!);
     const lanjut = mode === "cocok" ? pid : mode === "buat" ? "baru" : null;
     setBuka(null);
-    if (lanjut) {
-      // AC-13-01: lanjut ke "Konfirmasi diterima" / "Tandai selesai" dengan isian terisi
+    if (isPrototype && lanjut) {
+      // AC-13-01 prototype: lanjut ke "Konfirmasi diterima" / "Tandai selesai"
       mintaSelesai(lanjut === "baru" ? { arusId: buka.id } : { permintaanId: lanjut });
       router.push("/kelola/permintaan");
     }
@@ -142,7 +145,9 @@ export default function Arus() {
                       {a.status === "dicocokkan" && p && (
                         <div className="s up">
                           {p.jenis === "setor" ? "Setoran" : "Penarikan"} {nama(p.anggotaId)} {usd(p.jumlahUsd)}
-                          {p.status === "selesai" ? `, selesai efektif ${tanggal(p.tanggalEfektif!)}` : `, efektif ${tanggal(tanggalEfektifArus(a.waktu, data.pengaturan.jamSnapshot))}`}
+                          {p.status === "selesai"
+                            ? `, selesai efektif ${p.waktuEfektif ? waktu(p.waktuEfektif) : tanggal(p.tanggalEfektif!)}`
+                            : `, efektif ${tanggal(tanggalEfektifArus(a.waktu, data.pengaturan.jamSnapshot))}`}
                         </div>
                       )}
                       {a.alasanSelisih && <div className="s">Alasan selisih: {a.alasanSelisih}</div>}
@@ -177,8 +182,8 @@ export default function Arus() {
                               type="button"
                               className="btn ghost sm"
                               disabled={offline}
-                              onClick={() => {
-                                const h = batalTandai(a.id);
+                              onClick={async () => {
+                                const h = await batalTandai(a.id);
                                 setErrBaris({ [a.id]: h.ok ? "" : h.pesan });
                                 if (h.ok) tampilkan(`Penandaan transfer ${waktu(a.waktu)} dibatalkan.`);
                               }}

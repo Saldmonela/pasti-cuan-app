@@ -71,14 +71,17 @@ export default function Saldo() {
   function lonjakan(): number | null {
     const sebelum = urut.find((s) => s.tanggal < tgl);
     if (!sebelum || !nUsd) return null;
-    const adaArus = data.permintaan.some((p) => p.status === "selesai" && p.tanggalEfektif === tgl);
+    const adaTx = data.permintaan.some(
+      (p) => p.status === "selesai" && (p.tanggalEfektif === tgl || p.waktuEfektif?.slice(0, 10) === tgl),
+    );
+    const adaArus = data.arus.some((a) => a.status !== "bukan_arus" && a.waktu.slice(0, 10) === tgl);
     const pct = (Math.abs(nUsd - sebelum.nilaiUsd) / sebelum.nilaiUsd) * 100;
-    return !adaArus && pct > data.pengaturan.ambangLonjakanPersen ? pct : null;
+    return !adaTx && !adaArus && pct > data.pengaturan.ambangLonjakanPersen ? pct : null;
   }
 
-  function simpan() {
+  async function simpan() {
     setKirim(true);
-    const h = simpanSnapshot(
+    const h = await simpanSnapshot(
       {
         tanggal: tgl,
         nilaiUsd: nUsd!,
@@ -374,8 +377,8 @@ export default function Saldo() {
               type="button"
               className="btn danger"
               disabled={dipakai.has(tunda.tgl)}
-              onClick={() => {
-                const h = hapusSnapshot(tunda.tgl);
+              onClick={async () => {
+                const h = await hapusSnapshot(tunda.tgl);
                 setTunda(null);
                 if (h.ok) tampilkan(`Saldo ${tanggal(tunda.tgl)} dihapus. Semua posisi sudah diperbarui.`);
               }}

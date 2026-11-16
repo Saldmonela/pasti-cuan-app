@@ -37,7 +37,7 @@ export default function Tarik() {
     if (!Object.keys(e2).length) setKonfirmasi({ net: pos.netUsd });
   }
 
-  function ajukanSekarang() {
+  async function ajukanSekarang() {
     if (kirim || !konfirmasi) return;
     // versi_data: jika angka berubah sejak simulasi, minta investor cek ulang
     if (Math.abs(konfirmasi.net - pos.netUsd) > 0.004) {
@@ -46,7 +46,7 @@ export default function Tarik() {
       return;
     }
     setKirim(true);
-    const h = ajukan({
+    const h = await ajukan({
       jenis: "tarik",
       jumlahUsd: n!,
       alamatWalletTujuan: alamat.trim() || undefined,

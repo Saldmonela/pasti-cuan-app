@@ -51,6 +51,9 @@ export interface Permintaan {
   status: Status;
   alasan?: string;
   tanggalEfektif?: Tanggal;
+  /** Diisi untuk transaksi onchain yang langsung dinilai pada waktu transfer (BR-18). */
+  waktuEfektif?: string;
+  titikNilaiId?: number;
   jumlahFinalUsd?: number;
   sumber: "app" | "impor";
   diprosesOleh?: string;
@@ -71,6 +74,7 @@ export interface ArusOnchain {
   waktu: string;
   arah: "masuk" | "keluar";
   token: string;
+  simbol?: string;
   jumlah: number;
   nilaiUsd: number;
   alamatLawan: string;

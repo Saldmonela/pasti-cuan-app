@@ -69,6 +69,8 @@ export interface HasilPool {
   nav: Record<Tanggal, number>;
   /** Unit dan modal tiap anggota sesudah tiap snapshot, dasar nilai live di antara dua snapshot. */
   keadaan: Record<Tanggal, Keadaan>;
+  /** Keadaan kronologis (termasuk transaksi onchain di waktu transfer) untuk liveDi & seriRentang. */
+  keadaanSaat: KeadaanSaat[];
   /** Terisi bila ada titik nilai sesudah snapshot resmi terakhir (BR-19). */
   live: Live | null;
 }
@@ -77,6 +79,13 @@ export interface Keadaan {
   total: number;
   unitFee: number;
   anggota: Record<string, { unit: number; modalUsd: number; modalSol: number; mulai: Tanggal | null }>;
+}
+
+export interface KeadaanSaat extends Keadaan {
+  ms: number;
+  tanggal: Tanggal;
+  hargaUnit: number;
+  settledIds: string[];
 }
 
 export interface Live {
@@ -110,10 +119,76 @@ function feeDari(k: Kondisi, harga1Unit: Decimal, hargaSol: Decimal, set: Pengat
   return Decimal.max(0, gross.sub(k.modalUsd)).mul(pct);
 }
 
-export function transaksiSelesai(permintaan: Permintaan[]): Permintaan[] {
+const isOnchainTx = (p: Permintaan) => Boolean(p.waktuEfektif && p.titikNilaiId);
+
+function waktuEfektifMs(p: Permintaan, jam = "08:00"): number {
+  if (p.waktuEfektif) return ms(p.waktuEfektif);
+  return msSnapshot(p.tanggalEfektif!, jam);
+}
+
+export function transaksiSelesai(permintaan: Permintaan[], jam = "08:00"): Permintaan[] {
   return permintaan
-    .filter((p) => p.status === "selesai" && p.tanggalEfektif)
-    .sort((a, b) => (a.tanggalEfektif! < b.tanggalEfektif! ? -1 : a.tanggalEfektif! > b.tanggalEfektif! ? 1 : a.dibuatPada < b.dibuatPada ? -1 : 1));
+    .filter((p) => p.status === "selesai" && (!!p.tanggalEfektif || isOnchainTx(p)))
+    .sort((a, b) => {
+      const ta = waktuEfektifMs(a, jam);
+      const tb = waktuEfektifMs(b, jam);
+      if (ta !== tb) return ta - tb;
+      return a.dibuatPada < b.dibuatPada ? -1 : a.dibuatPada > b.dibuatPada ? 1 : 0;
+    });
+}
+
+function terapkanTransaksi(
+  t: Permintaan,
+  navSaat: Decimal,
+  hargaSolSaat: Decimal,
+  tglEfektif: Tanggal,
+  k: Record<string, Kondisi>,
+  totalRef: { val: Decimal },
+  unitFeeRef: { val: Decimal },
+  idPengelola: string | null,
+  set: Pengaturan,
+  nama: Record<string, string>,
+  penyebab: string[],
+  arusAnggota: Record<string, Decimal>,
+  txHari: TransaksiHari[],
+) {
+  const m = k[t.anggotaId];
+  if (!m) return;
+  const w = D(t.jumlahFinalUsd!);
+  txHari.push({ anggotaId: t.anggotaId, nama: nama[t.anggotaId], jenis: t.jenis, jumlahUsd: w.toNumber() });
+  if (t.jenis === "setor") {
+    // BR-03: unit dibeli = setoran / NAV efektif
+    const u = w.div(navSaat);
+    m.unit = m.unit.add(u);
+    m.modalUsd = m.modalUsd.add(w);
+    m.modalSol = m.modalSol.add(w.div(hargaSolSaat));
+    m.mulai ??= tglEfektif;
+    totalRef.val = totalRef.val.add(u);
+    arusAnggota[t.anggotaId] = (arusAnggota[t.anggotaId] ?? NOL).add(w);
+  } else {
+    // BR-06: tarik W dari nilai bersih N, proporsi f = W / N
+    const pengelola = t.anggotaId === idPengelola;
+    const gross = m.unit.mul(navSaat);
+    const fee = feeDari(m, navSaat, hargaSolSaat, set, pengelola);
+    const N = gross.sub(fee);
+    if (w.gt(N.add(0.005))) {
+      penyebab.push(`Penarikan ${nama[t.anggotaId]} ${tglEfektif} melebihi nilai bersihnya.`);
+    }
+    const f = N.isZero() ? D(1) : Decimal.min(1, w.div(N));
+    const terjual = m.unit.mul(f);
+    const keluar = w.div(navSaat);
+    const keFee = Decimal.max(0, terjual.sub(keluar));
+    m.unit = m.unit.sub(terjual);
+    m.modalUsd = m.modalUsd.mul(D(1).sub(f));
+    m.modalSol = m.modalSol.mul(D(1).sub(f));
+    if (idPengelola && !pengelola) {
+      k[idPengelola].unit = k[idPengelola].unit.add(keFee);
+      unitFeeRef.val = unitFeeRef.val.add(keFee);
+    }
+    if (pengelola) unitFeeRef.val = Decimal.max(0, unitFeeRef.val.sub(terjual));
+    totalRef.val = totalRef.val.sub(keluar);
+    arusAnggota[t.anggotaId] = (arusAnggota[t.anggotaId] ?? NOL).sub(w);
+  }
 }
 
 export function hitungPool(
@@ -122,9 +197,10 @@ export function hitungPool(
   permintaan: Permintaan[],
   set: Pengaturan,
   arus: ArusOnchain[] = [],
+  titikReferensi: TitikNilai[] = [],
 ): HasilPool {
   const snaps = [...snapshots].sort((a, b) => (a.tanggal < b.tanggal ? -1 : 1));
-  const tx = transaksiSelesai(permintaan);
+  const tx = transaksiSelesai(permintaan, set.jamSnapshot);
   const nama = Object.fromEntries(anggota.map((a) => [a.id, a.nama]));
   const idPengelola = anggota.find((a) => a.peran === "pengelola")?.id ?? null;
   const k: Record<string, Kondisi> = Object.fromEntries(
@@ -134,119 +210,159 @@ export function hitungPool(
   const riwayatPool: TitikPool[] = [];
   const nav: Record<string, number> = {};
   const keadaan: Record<string, Keadaan> = {};
+  const keadaanSaat: KeadaanSaat[] = [];
   const penyebab: string[] = [];
   const tanggalSnap = new Set(snaps.map((s) => s.tanggal));
+  const titikById = new Map<number, TitikNilai>();
+  for (const ti of titikReferensi) {
+    if (ti.id != null) titikById.set(ti.id, ti);
+  }
 
-  // (c) setiap transaksi selesai wajib punya snapshot di tanggal efektifnya (BR-10, BR-12c)
+  // (c) setiap transaksi selesai wajib punya snapshot (manual/impor) atau titik nilai (onchain) (BR-10, BR-12c)
   for (const t of tx) {
-    if (!tanggalSnap.has(t.tanggalEfektif!)) {
+    if (isOnchainTx(t)) {
+      if (!titikById.has(t.titikNilaiId!)) {
+        penyebab.push(`Transaksi ${nama[t.anggotaId] ?? t.anggotaId} (${t.waktuEfektif}) tidak punya titik nilai referensi.`);
+      }
+    } else if (!tanggalSnap.has(t.tanggalEfektif!)) {
       penyebab.push(`Transaksi ${nama[t.anggotaId] ?? t.anggotaId} tanggal ${t.tanggalEfektif} tidak punya saldo harian.`);
     }
   }
 
-  let total = NOL;
-  let unitFee = NOL;
+  type Event =
+    | { kind: "snap"; tMs: number; snap: Snapshot }
+    | { kind: "tx"; tMs: number; tx: Permintaan; titik: TitikNilai };
+
+  const events: Event[] = snaps.map((snap) => ({
+    kind: "snap",
+    tMs: msSnapshot(snap.tanggal, set.jamSnapshot),
+    snap,
+  }));
+  for (const t of tx) {
+    if (!isOnchainTx(t)) continue;
+    const ti = titikById.get(t.titikNilaiId!);
+    if (ti) {
+      events.push({ kind: "tx", tMs: ms(t.waktuEfektif!), tx: t, titik: ti });
+    }
+  }
+  events.sort((a, b) => {
+    if (a.tMs !== b.tMs) return a.tMs - b.tMs;
+    if (a.kind !== b.kind) return a.kind === "snap" ? -1 : 1;
+    return 0;
+  });
+
+  const totalRef = { val: NOL };
+  const unitFeeRef = { val: NOL };
   let hargaUnit = D(1);
   let hargaSol = D(1);
   let nilaiPool = NOL;
   let saldoSol = NOL;
+  let lastEventMs = -Infinity;
+  const settledIds = new Set<string>();
 
-  for (const s of snaps) {
-    const hari = tx.filter((t) => t.tanggalEfektif === s.tanggal);
-    const nilai = D(s.nilaiUsd);
-    hargaSol = nilai.div(s.saldoSol);
-    const setor = hari.filter((t) => t.jenis === "setor").reduce((a, t) => a.add(t.jumlahFinalUsd!), NOL);
-    const tarik = hari.filter((t) => t.jenis === "tarik").reduce((a, t) => a.add(t.jumlahFinalUsd!), NOL);
-    // BR-01: snapshot pertama 1 unit = $1. BR-02: NAV = (nilai - arus) / unit sebelum arus.
-    const navHari = total.isZero() ? D(1) : nilai.sub(setor.sub(tarik)).div(total);
-    nav[s.tanggal] = navHari.toNumber();
-    const arusAnggota: Record<string, Decimal> = {};
-    const txHari: TransaksiHari[] = [];
+  const snapshotKeadaan = (): Keadaan["anggota"] =>
+    Object.fromEntries(
+      anggota.map((a) => [
+        a.id,
+        { unit: k[a.id].unit.toNumber(), modalUsd: k[a.id].modalUsd.toNumber(), modalSol: k[a.id].modalSol.toNumber(), mulai: k[a.id].mulai },
+      ]),
+    );
 
-    for (const t of hari) {
-      const m = k[t.anggotaId];
-      if (!m) continue;
-      const w = D(t.jumlahFinalUsd!);
-      txHari.push({ anggotaId: t.anggotaId, nama: nama[t.anggotaId], jenis: t.jenis, jumlahUsd: w.toNumber() });
-      if (t.jenis === "setor") {
-        // BR-03: unit dibeli = setoran / NAV tanggal efektif
-        const u = w.div(navHari);
-        m.unit = m.unit.add(u);
-        m.modalUsd = m.modalUsd.add(w);
-        m.modalSol = m.modalSol.add(w.div(hargaSol));
-        m.mulai ??= s.tanggal;
-        total = total.add(u);
-        arusAnggota[t.anggotaId] = (arusAnggota[t.anggotaId] ?? NOL).add(w);
-      } else {
-        // BR-06: tarik W dari nilai bersih N, proporsi f = W / N
-        const pengelola = t.anggotaId === idPengelola;
-        const gross = m.unit.mul(navHari);
-        const fee = feeDari(m, navHari, hargaSol, set, pengelola);
-        const N = gross.sub(fee);
-        if (w.gt(N.add(0.005))) {
-          penyebab.push(`Penarikan ${nama[t.anggotaId]} ${t.tanggalEfektif} melebihi nilai bersihnya.`);
-        }
-        const f = N.isZero() ? D(1) : Decimal.min(1, w.div(N));
-        const terjual = m.unit.mul(f);
-        const keluar = w.div(navHari);
-        const keFee = Decimal.max(0, terjual.sub(keluar));
-        m.unit = m.unit.sub(terjual);
-        m.modalUsd = m.modalUsd.mul(D(1).sub(f));
-        m.modalSol = m.modalSol.mul(D(1).sub(f));
-        if (idPengelola && !pengelola) {
-          k[idPengelola].unit = k[idPengelola].unit.add(keFee);
-          unitFee = unitFee.add(keFee);
-        }
-        if (pengelola) unitFee = Decimal.max(0, unitFee.sub(terjual));
-        total = total.sub(keluar);
-        arusAnggota[t.anggotaId] = (arusAnggota[t.anggotaId] ?? NOL).sub(w);
+  for (const ev of events) {
+    if (ev.kind === "snap") {
+      const s = ev.snap;
+      const hari = tx.filter((t) => !isOnchainTx(t) && t.tanggalEfektif === s.tanggal);
+      const nilai = D(s.nilaiUsd);
+      hargaSol = nilai.div(s.saldoSol);
+      const setor = hari.filter((t) => t.jenis === "setor").reduce((a, t) => a.add(t.jumlahFinalUsd!), NOL);
+      const tarik = hari.filter((t) => t.jenis === "tarik").reduce((a, t) => a.add(t.jumlahFinalUsd!), NOL);
+      // BR-01: snapshot pertama 1 unit = $1. BR-02: NAV = (nilai - arus) / unit sebelum arus.
+      const navHari = totalRef.val.isZero() ? D(1) : nilai.sub(setor.sub(tarik)).div(totalRef.val);
+      nav[s.tanggal] = navHari.toNumber();
+      const arusAnggota: Record<string, Decimal> = {};
+      const txHari: TransaksiHari[] = [];
+
+      for (const t of hari) {
+        terapkanTransaksi(t, navHari, hargaSol, s.tanggal, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, arusAnggota, txHari);
+        settledIds.add(t.id);
       }
-    }
 
-    hargaUnit = total.isZero() ? navHari : nilai.div(total);
-    nilaiPool = nilai;
-    saldoSol = D(s.saldoSol);
-    let jumlahGross = NOL;
-    for (const a of anggota) {
-      const m = k[a.id];
-      if (m.unit.lt(-1e-9)) penyebab.push(`Unit ${a.nama} negatif pada ${s.tanggal}.`);
-      const gross = m.unit.mul(hargaUnit);
-      jumlahGross = jumlahGross.add(gross);
-      const net = gross.sub(feeDari(m, hargaUnit, hargaSol, set, a.id === idPengelola));
-      if (m.mulai || !m.unit.isZero()) {
-        riwayat[a.id].push({
-          tanggal: s.tanggal,
-          netUsd: net.toNumber(),
-          netSol: net.div(hargaSol).toNumber(),
-          harga: hargaSol.toNumber(),
-          arusUsd: (arusAnggota[a.id] ?? NOL).toNumber(),
-          transaksi: txHari.filter((t) => t.anggotaId === a.id),
-        });
+      hargaUnit = totalRef.val.isZero() ? navHari : nilai.div(totalRef.val);
+      nilaiPool = nilai;
+      saldoSol = D(s.saldoSol);
+      let jumlahGross = NOL;
+      for (const a of anggota) {
+        const m = k[a.id];
+        if (m.unit.lt(-1e-9)) penyebab.push(`Unit ${a.nama} negatif pada ${s.tanggal}.`);
+        const gross = m.unit.mul(hargaUnit);
+        jumlahGross = jumlahGross.add(gross);
+        const net = gross.sub(feeDari(m, hargaUnit, hargaSol, set, a.id === idPengelola));
+        if (m.mulai || !m.unit.isZero()) {
+          riwayat[a.id].push({
+            tanggal: s.tanggal,
+            netUsd: net.toNumber(),
+            netSol: net.div(hargaSol).toNumber(),
+            harga: hargaSol.toNumber(),
+            arusUsd: (arusAnggota[a.id] ?? NOL).toNumber(),
+            transaksi: txHari.filter((t) => t.anggotaId === a.id),
+          });
+        }
       }
+      const angSnap = snapshotKeadaan();
+      keadaan[s.tanggal] = { total: totalRef.val.toNumber(), unitFee: unitFeeRef.val.toNumber(), anggota: angSnap };
+      keadaanSaat.push({ ms: ev.tMs, tanggal: s.tanggal, total: totalRef.val.toNumber(), unitFee: unitFeeRef.val.toNumber(), hargaUnit: hargaUnit.toNumber(), anggota: angSnap, settledIds: [...settledIds] });
+      if (!totalRef.val.isZero() && jumlahGross.sub(nilai).abs().gt(0.01)) {
+        penyebab.push(`Total nilai anggota tidak sama dengan saldo pool pada ${s.tanggal}.`);
+      }
+      riwayatPool.push({
+        tanggal: s.tanggal,
+        nilaiUsd: nilai.toNumber(),
+        saldoSol: s.saldoSol,
+        harga: hargaSol.toNumber(),
+        arusUsd: setor.sub(tarik).toNumber(),
+        transaksi: txHari,
+      });
+      lastEventMs = ev.tMs;
+    } else {
+      // Transaksi onchain dinilai pada waktu transfer memakai titik nilai referensi (BR-18, update 17 Nov 2026)
+      const t = ev.tx;
+      const ti = ev.titik;
+      let netral = NOL;
+      for (const a of arus) {
+        const ta = ms(a.waktu);
+        if (ta <= lastEventMs || ta > ti.ms) continue;
+        // Arus milik transaksi ini sendiri baru terpotong dari isi wallet bila titik referensi diambil SESUDAH waktu blok transfer.
+        if (a.permintaanId === t.id && ti.ms <= ta) continue;
+        const belumSelesai = a.status === "belum" || (a.status === "dicocokkan" && !settledIds.has(a.permintaanId ?? ""));
+        if (!belumSelesai) continue;
+        netral = netral.add(a.arah === "keluar" ? a.nilaiUsd : -a.nilaiUsd);
+      }
+      const nilaiAdjusted = D(ti.nilaiUsd).add(netral);
+      hargaSol = D(ti.harga);
+      const navTx = totalRef.val.isZero() ? D(1) : nilaiAdjusted.div(totalRef.val);
+      const tglTx = isoWib(ev.tMs).slice(0, 10);
+      const arusAnggota: Record<string, Decimal> = {};
+      const txHari: TransaksiHari[] = [];
+      terapkanTransaksi(t, navTx, hargaSol, tglTx, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, arusAnggota, txHari);
+      settledIds.add(t.id);
+      hargaUnit = navTx;
+      nilaiPool = totalRef.val.mul(navTx);
+      saldoSol = nilaiPool.div(hargaSol);
+      lastEventMs = ev.tMs;
+      keadaanSaat.push({
+        ms: ev.tMs,
+        tanggal: tglTx,
+        total: totalRef.val.toNumber(),
+        unitFee: unitFeeRef.val.toNumber(),
+        hargaUnit: hargaUnit.toNumber(),
+        anggota: snapshotKeadaan(),
+        settledIds: [...settledIds],
+      });
     }
-    keadaan[s.tanggal] = {
-      total: total.toNumber(),
-      unitFee: unitFee.toNumber(),
-      anggota: Object.fromEntries(
-        anggota.map((a) => [
-          a.id,
-          { unit: k[a.id].unit.toNumber(), modalUsd: k[a.id].modalUsd.toNumber(), modalSol: k[a.id].modalSol.toNumber(), mulai: k[a.id].mulai },
-        ]),
-      ),
-    };
-    if (!total.isZero() && jumlahGross.sub(nilai).abs().gt(0.01)) {
-      penyebab.push(`Total nilai anggota tidak sama dengan saldo pool pada ${s.tanggal}.`);
-    }
-    riwayatPool.push({
-      tanggal: s.tanggal,
-      nilaiUsd: nilai.toNumber(),
-      saldoSol: s.saldoSol,
-      harga: hargaSol.toNumber(),
-      arusUsd: setor.sub(tarik).toNumber(),
-      transaksi: txHari,
-    });
   }
 
+  const total = totalRef.val;
+  const unitFee = unitFeeRef.val;
   const tanggalData = snaps.length ? snaps[snaps.length - 1].tanggal : null;
 
   // (e) arus onchain yang belum ditandai tidak boleh terjadi sebelum snapshot resmi terakhir (BR-12e, BR-19)
@@ -279,6 +395,7 @@ export function hitungPool(
     cek: { lolos: penyebab.length === 0, penyebab },
     nav,
     keadaan,
+    keadaanSaat,
     live: null,
   };
 }
@@ -344,19 +461,32 @@ function snapshotSebelum(snaps: Snapshot[], t: number, jam: string): Snapshot | 
   return s;
 }
 
-/** Nilai live di satu titik: nilai mentah - arus masuk + arus keluar sejak snapshot resmi sebelumnya. */
+function keadaanPada(h: HasilPool, t: number): KeadaanSaat | null {
+  let latest: KeadaanSaat | null = null;
+  for (const ks of h.keadaanSaat) {
+    if (ks.ms <= t && (!latest || ks.ms >= latest.ms)) latest = ks;
+  }
+  return latest;
+}
+
+/** Nilai live di satu titik: nilai mentah - arus masuk + arus keluar yang belum diproses sejak keadaan terakhir. */
 export function liveDi(h: HasilPool, snaps: Snapshot[], arus: ArusOnchain[], ti: TitikNilai, set: Pengaturan): Live | null {
+  const ks = keadaanPada(h, ti.ms);
   const s = snapshotSebelum(snaps, ti.ms, set.jamSnapshot);
-  if (!s || !h.keadaan[s.tanggal]) return null;
-  const dari = msSnapshot(s.tanggal, set.jamSnapshot);
+  if (!ks && (!s || !h.keadaan[s.tanggal])) return null;
+  const dari = ks ? ks.ms : msSnapshot(s!.tanggal, set.jamSnapshot);
+  const settled = new Set(ks?.settledIds ?? []);
+  const total = ks ? ks.total : h.keadaan[s!.tanggal].total;
+  const snapTgl = ks ? ks.tanggal : s!.tanggal;
+
   let netral = 0;
   for (const a of arus) {
     const t = ms(a.waktu);
     if (t <= dari || t > ti.ms || !dinetralkan(a)) continue;
+    if (a.status === "dicocokkan" && a.permintaanId && settled.has(a.permintaanId)) continue;
     netral += a.arah === "keluar" ? a.nilaiUsd : -a.nilaiUsd;
   }
   const nilaiUsd = ti.nilaiUsd + netral;
-  const total = h.keadaan[s.tanggal].total;
   return {
     dibacaPada: isoWib(ti.ms),
     ms: ti.ms,
@@ -366,12 +496,12 @@ export function liveDi(h: HasilPool, snaps: Snapshot[], arus: ArusOnchain[], ti:
     saldoSol: nilaiUsd / ti.harga,
     harga: ti.harga,
     nav: total ? nilaiUsd / total : 1,
-    snapshot: s.tanggal,
+    snapshot: snapTgl,
   };
 }
 
 function posisiLive(h: HasilPool, anggota: Anggota[], live: Live, set: Pengaturan) {
-  const kd = h.keadaan[live.snapshot];
+  const kd = keadaanPada(h, live.ms) ?? h.keadaan[live.snapshot];
   return susunPosisi(anggota, kondisiDari(kd), D(kd.total), D(live.nav), D(live.harga), set, h.pengelola.id, h.tanggalData);
 }
 
@@ -393,7 +523,7 @@ export function terapkanLive(
   // titik estimasi (BR-24) tidak pernah dipakai untuk NAV live
   if (!ti || ti.estimasi || ti.ms <= msSnapshot(h.tanggalData, set.jamSnapshot)) return h;
   const live = liveDi(h, snaps, arus, ti, set);
-  if (!live || live.snapshot !== h.tanggalData) return h;
+  if (!live || live.snapshot < h.tanggalData) return h;
   const { posisi, feeTerutangTotal } = posisiLive(h, anggota, live, set);
   return {
     ...h,
@@ -487,7 +617,7 @@ function nilaiDi(c: KonteksSeri, ti: TitikNilai, anggotaId: string | null): { us
   const live = liveDi(c.h, c.snaps, c.arus, ti, c.set);
   if (!live) return null;
   if (!anggotaId) return { usd: ti.nilaiUsd, sol: ti.nilaiUsd / ti.harga, nav: live.nav, snapshot: live.snapshot };
-  const kd = c.h.keadaan[live.snapshot];
+  const kd = keadaanPada(c.h, ti.ms) ?? c.h.keadaan[live.snapshot];
   const m = kd.anggota[anggotaId];
   if (!m || (!m.mulai && m.unit === 0)) return null;
   const isP = anggotaId === c.h.pengelola.id;
@@ -627,6 +757,16 @@ export function seriRentang(c: KonteksSeri, r: Rentang, anggotaId: string | null
       // pool: isi wallet berubah saat transfer terjadi, jadi transfer onchain diakui sebagai arus di titik itu
       if (!anggotaId) arusUsd += a.bersih;
       transaksi.push(...a.transaksi);
+      // saya: untuk transaksi onchain yang langsung selesai pada waktu transfer (BR-18), unit berubah di titik ini
+      if (anggotaId) {
+        for (const p of c.permintaan) {
+          if (p.status !== "selesai" || p.anggotaId !== anggotaId || !isOnchainTx(p)) continue;
+          const tp = ms(p.waktuEfektif!);
+          if (tp > tSebelum && tp <= ti.ms) {
+            arusUsd += p.jenis === "setor" ? p.jumlahFinalUsd! : -p.jumlahFinalUsd!;
+          }
+        }
+      }
     }
     out.push({
       ms: ti.ms,
