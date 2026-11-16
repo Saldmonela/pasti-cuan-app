@@ -1,12 +1,13 @@
 "use client";
 // Antrean permintaan (US-03, US-04 sisi pengelola): konfirmasi setor, tandai selesai tarik, tolak.
-// Urutan UC-002: transfer di luar app -> isi saldo tanggal efektif (sesudah transfer) -> tandai selesai.
+// Urutan UC-002 (v1.1): transfer di luar app -> transfer terdeteksi di Arus onchain dan dicocokkan ->
+// tandai selesai dengan jumlah, bukti, dan tanggal efektif terisi (snapshot resmi pertama sesudah transfer).
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IconArrowDownLeft, IconArrowUpRight, IconInfoCircle } from "@tabler/icons-react";
 import { BackBar, describedBy, Field, KhususPengelola, Sheet, StatusBanners, StatusChip } from "@/components/ui";
 import { angka, parseAngka, tanggal, usd, waktu } from "@/lib/format";
-import { useStore } from "@/lib/store";
+import { hapusTujuanSelesai, lihatTujuanSelesai, tanggalEfektifArus, useStore } from "@/lib/store";
 import type { Permintaan } from "@/lib/types";
 
 type Filter = "menunggu" | "selesai" | "semua";
@@ -14,11 +15,30 @@ type Aksi = { p: Permintaan; jenis: "selesai" | "tolak" };
 
 export default function AntreanPermintaan() {
   const { saya, data, nama, selesaikan, tolak, tampilkan, offline, hasil, hariIni } = useStore();
+  const jam = data.pengaturan.jamSnapshot;
+  const arusDari = (p: Permintaan) => data.arus.filter((a) => a.permintaanId === p.id).sort((a, b) => (a.waktu < b.waktu ? -1 : 1));
+  /** Isian awal "Tandai selesai": dari arus onchain yang dicocokkan bila ada (AC-13-01). */
+  const isian = (p: Permintaan) => {
+    const a = arusDari(p);
+    if (!a.length) return { tgl: hariIni, jumlah: angka(p.jumlahUsd, 2), bukti: "" };
+    return {
+      tgl: tanggalEfektifArus(a[a.length - 1].waktu, jam),
+      jumlah: angka(a.reduce((t, x) => t + x.nilaiUsd, 0), 2),
+      bukti: a.map((x) => x.signature).join(", ").slice(0, 100),
+    };
+  };
+  // dibuka dari halaman Arus: langsung tampilkan lembar selesai untuk permintaan itu
+  const tujuan = lihatTujuanSelesai();
+  const pAwal = tujuan
+    ? data.permintaan.find((p) => p.id === (tujuan.permintaanId ?? data.arus.find((a) => a.id === tujuan.arusId)?.permintaanId) && p.status === "menunggu")
+    : undefined;
+  const isiAwal = pAwal ? isian(pAwal) : null;
+  useEffect(() => hapusTujuanSelesai(), []);
   const [f, setF] = useState<Filter>("menunggu");
-  const [aksi, setAksi] = useState<Aksi | null>(null);
-  const [tgl, setTgl] = useState("");
-  const [jumlah, setJumlah] = useState("");
-  const [bukti, setBukti] = useState("");
+  const [aksi, setAksi] = useState<Aksi | null>(pAwal ? { p: pAwal, jenis: "selesai" } : null);
+  const [tgl, setTgl] = useState(isiAwal?.tgl ?? "");
+  const [jumlah, setJumlah] = useState(isiAwal?.jumlah ?? "");
+  const [bukti, setBukti] = useState(isiAwal?.bukti ?? "");
   const [alasan, setAlasan] = useState("");
   const [err, setErr] = useState<Record<string, string>>({});
   if (!saya) return null;
@@ -30,10 +50,11 @@ export default function AntreanPermintaan() {
   const n = (x: Filter) => data.permintaan.filter((p) => p.sumber === "app" && (x === "semua" || (x === "menunggu" ? p.status === "menunggu" : p.status !== "menunggu"))).length;
 
   function buka(p: Permintaan, jenis: Aksi["jenis"]) {
+    const i = isian(p);
     setAksi({ p, jenis });
-    setTgl(hariIni);
-    setJumlah(angka(p.jumlahUsd, 2));
-    setBukti("");
+    setTgl(i.tgl);
+    setJumlah(i.jumlah);
+    setBukti(i.bukti);
     setAlasan("");
     setErr({});
   }
@@ -92,6 +113,18 @@ export default function AntreanPermintaan() {
                     {p.buktiTransaksi && <div className="s">Bukti: {p.buktiTransaksi}</div>}
                     {p.alamatWalletTujuan && <div className="s" style={{ overflowWrap: "anywhere" }}>Ke wallet: {p.alamatWalletTujuan}</div>}
                     {p.catatan && <div className="s">Catatan: {p.catatan}</div>}
+                    {p.dibuatOleh && <div className="s">Dibuat pengelola dari transfer di wallet</div>}
+                    {p.status === "menunggu" &&
+                      (arusDari(p).length ? (
+                        <div className="s up">
+                          Transfer cocok: {usd(arusDari(p).reduce((t, x) => t + x.nilaiUsd, 0))} ({arusDari(p).length} transfer), efektif{" "}
+                          {tanggal(tanggalEfektifArus(arusDari(p).at(-1)!.waktu, jam))}
+                        </div>
+                      ) : (
+                        <div className="s">
+                          Belum ada transfer yang dicocokkan. <Link href="/kelola/arus">Lihat arus onchain</Link>
+                        </div>
+                      ))}
                     {p.status === "selesai" && <div className="s up">Efektif {tanggal(p.tanggalEfektif!)} · {usd(p.jumlahFinalUsd!)}</div>}
                     {p.status === "ditolak" && <div className="s dn">Ditolak: {p.alasan}</div>}
                     {p.status === "menunggu" && (
@@ -133,8 +166,10 @@ export default function AntreanPermintaan() {
               <div className="banner info" style={{ background: "var(--field)" }}>
                 <IconInfoCircle size={18} aria-hidden="true" />
                 <p>
-                  Transfer {usd(pAksi.jumlahUsd)} di luar app dulu, lalu isi saldo tanggal efektif (sesudah transfer). Nilai bersih {nama(pAksi.anggotaId)} sekarang{" "}
-                  {usd(posInvestor?.netUsd ?? 0)}.
+                  {arusDari(pAksi).length
+                    ? "Transfer keluar sudah terdeteksi dan dicocokkan. Jumlah, bukti, dan tanggal efektif terisi dari wallet."
+                    : `Transfer ${usd(pAksi.jumlahUsd)} di luar app dulu, lalu cocokkan di Arus onchain.`}{" "}
+                  Nilai bersih {nama(pAksi.anggotaId)} sekarang {usd(posInvestor?.netUsd ?? 0)}.
                 </p>
               </div>
             )}
@@ -142,15 +177,15 @@ export default function AntreanPermintaan() {
               id="tgl"
               label="Tanggal efektif"
               error={err.tanggal}
-              hint={`Wajib punya saldo harian. Saldo terakhir: ${hasil.tanggalData ? tanggal(hasil.tanggalData) : "belum ada"}.`}
+              hint={`Snapshot resmi pertama sesudah transfer. Wajib sudah ada; snapshot terakhir ${hasil.tanggalData ? tanggal(hasil.tanggalData) : "belum ada"}.`}
             >
               <div className={`inp${err.tanggal ? " err" : ""}`}>
                 <input id="tgl" type="date" value={tgl} onChange={(e) => setTgl(e.target.value)} aria-invalid={!!err.tanggal} aria-describedby={describedBy("tgl", err.tanggal, true)} />
               </div>
             </Field>
-            {err.tanggal && (
+            {err.tanggal && tgl <= hariIni && (
               <Link href="/kelola/saldo" className="btn ton sm" style={{ alignSelf: "flex-start" }}>
-                Isi saldo dulu
+                Isi snapshot manual
               </Link>
             )}
             <Field id="jml" label={pAksi.jenis === "setor" ? "Jumlah diterima" : "Jumlah dikirim"} error={err.jumlah} hint={`Diajukan ${usd(pAksi.jumlahUsd)}.`}>

@@ -9,7 +9,9 @@ import { useStore } from "@/lib/store";
 
 const ISTILAH: [string, string][] = [
   ["Pool", "Seluruh dana patungan di wallet \"Pasti Cuan\"."],
-  ["Snapshot", "Catatan saldo pool pada satu tanggal, diisi pengelola. Satu tanggal maksimal satu snapshot."],
+  ["Snapshot", "Catatan resmi saldo pool pada satu tanggal, dibuat otomatis jam 08.00 WIB. Dasar semua transaksi."],
+  ["Nilai live", "Nilai pool terbaru, dibaca dari wallet tiap menit. Transfer yang belum masuk hitungan dinetralkan dulu. Bersifat perkiraan."],
+  ["Arus onchain", "Transfer masuk atau keluar wallet pool. Pengelola mencocokkannya dengan setoran atau penarikan."],
   ["Unit", "Satuan kepemilikan pool. Setoran membeli unit, penarikan menjual unit."],
   ["NAV", "Harga 1 unit pada suatu tanggal, dalam USD dan SOL."],
   ["Modal dasar", "Total uang yang sudah kamu setor dikurangi bagian modal yang sudah ditarik."],
@@ -65,7 +67,7 @@ export default function Lainnya() {
               <li>
                 <Link href="/kelola">
                   <span className="ico-dot"><IconLayoutDashboard size={18} aria-hidden="true" /></span>
-                  <span className="t"><span>Kelola pool</span><small>Saldo harian, permintaan, anggota</small></span>
+                  <span className="t"><span>Kelola pool</span><small>Arus onchain, permintaan, snapshot, anggota</small></span>
                   <IconChevronRight className="chev" size={18} aria-hidden="true" />
                 </Link>
               </li>

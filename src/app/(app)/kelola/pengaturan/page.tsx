@@ -13,6 +13,10 @@ export default function Pengaturan() {
   const [dasar, setDasar] = useState<Satuan>(p.satuanDasarFee);
   const [lama, setLama] = useState(String(p.batasDataLamaHari));
   const [ambang, setAmbang] = useState(String(p.ambangLonjakanPersen));
+  const [likuid, setLikuid] = useState(String(p.ambangLikuiditasTokenUsd));
+  const [dust, setDust] = useState(String(p.ambangDustUsd));
+  const [liveLama, setLiveLama] = useState(String(p.batasLiveLamaMenit));
+  const [toleransi, setToleransi] = useState(String(p.toleransiCocokPersen));
   const [err, setErr] = useState<Record<string, string>>({});
   const [yakin, setYakin] = useState(false);
   if (!saya) return null;
@@ -21,6 +25,10 @@ export default function Pengaturan() {
   const nFee = parseAngka(fee);
   const nLama = parseAngka(lama);
   const nAmbang = parseAngka(ambang);
+  const nLikuid = parseAngka(likuid);
+  const nDust = parseAngka(dust);
+  const nLiveLama = parseAngka(liveLama);
+  const nToleransi = parseAngka(toleransi);
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -28,6 +36,10 @@ export default function Pengaturan() {
     if (nFee === null || nFee < 0 || nFee > 100) e2.fee = "Fee harus antara 0 dan 100%.";
     if (nLama === null || nLama < 1 || !Number.isInteger(nLama)) e2.lama = "Tulis jumlah hari, minimal 1.";
     if (nAmbang === null || nAmbang <= 0) e2.ambang = "Ambang harus lebih dari 0%.";
+    if (nLikuid === null || nLikuid < 0) e2.likuid = "Ambang likuiditas tidak boleh negatif.";
+    if (nDust === null || nDust < 0) e2.dust = "Ambang dust tidak boleh negatif.";
+    if (nLiveLama === null || nLiveLama < 1 || !Number.isInteger(nLiveLama)) e2.liveLama = "Tulis jumlah menit, minimal 1.";
+    if (nToleransi === null || nToleransi < 0 || nToleransi > 100) e2.toleransi = "Toleransi harus antara 0 dan 100%.";
     setErr(e2);
     if (!Object.keys(e2).length) setYakin(true);
   }
@@ -41,7 +53,17 @@ export default function Pengaturan() {
           <dl className="kv lines">
             <div><dt>Nama pool</dt><dd>{p.namaPool}</dd></div>
             <div><dt>Tanggal mulai</dt><dd>{tanggal(p.tanggalMulai)}</dd></div>
+            <div>
+              <dt>Wallet pool</dt>
+              <dd className="num" style={{ overflowWrap: "anywhere", textAlign: "right", maxWidth: "60%" }}>
+                <a href={`https://solscan.io/account/${p.alamatWalletPool}`} target="_blank" rel="noreferrer">
+                  {p.alamatWalletPool.slice(0, 6)}…{p.alamatWalletPool.slice(-4)}
+                </a>
+              </dd>
+            </div>
+            <div><dt>Snapshot otomatis</dt><dd>Tiap hari {p.jamSnapshot.replace(":", ".")} WIB</dd></div>
           </dl>
+          <p className="note" style={{ marginTop: 10 }}>App hanya membaca alamat publik wallet ini tiap 1 menit, tidak pernah memegang kunci.</p>
         </section>
         <form className="card form" onSubmit={submit} noValidate>
           <fieldset disabled={offline} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
@@ -78,6 +100,31 @@ export default function Pengaturan() {
                 <span className="pre">%</span>
               </div>
             </Field>
+            <h3 style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>Pembacaan wallet</h3>
+            <Field id="likuid" label="Likuiditas minimal token" error={err.likuid} hint="Token di bawah ini dihitung $0, misalnya token spam. Usulan PRD: $10.000 (BR-17).">
+              <div className={`inp${err.likuid ? " err" : ""}`}>
+                <span className="pre">US$</span>
+                <input id="likuid" inputMode="decimal" value={likuid} onChange={(e) => setLikuid(e.target.value)} aria-invalid={!!err.likuid} aria-describedby={describedBy("likuid", err.likuid, true)} />
+              </div>
+            </Field>
+            <Field id="dust" label="Ambang dust" error={err.dust} hint="Transfer di bawah ini otomatis ditandai bukan arus. Usulan PRD: $1 (BR-19).">
+              <div className={`inp${err.dust ? " err" : ""}`}>
+                <span className="pre">US$</span>
+                <input id="dust" inputMode="decimal" value={dust} onChange={(e) => setDust(e.target.value)} aria-invalid={!!err.dust} aria-describedby={describedBy("dust", err.dust, true)} />
+              </div>
+            </Field>
+            <Field id="livelama" label="Keterangan nilai lama setelah" error={err.liveLama} hint="Usulan PRD: 15 menit tanpa pembacaan baru (BR-20).">
+              <div className={`inp${err.liveLama ? " err" : ""}`}>
+                <input id="livelama" inputMode="numeric" value={liveLama} onChange={(e) => setLiveLama(e.target.value)} aria-invalid={!!err.liveLama} aria-describedby={describedBy("livelama", err.liveLama, true)} />
+                <span className="pre">menit</span>
+              </div>
+            </Field>
+            <Field id="toleransi" label="Toleransi pencocokan" error={err.toleransi} hint="Selisih transfer dan permintaan di atas ini wajib diberi alasan. Usulan PRD: 2% (AC-13-01).">
+              <div className={`inp${err.toleransi ? " err" : ""}`}>
+                <input id="toleransi" inputMode="decimal" value={toleransi} onChange={(e) => setToleransi(e.target.value)} aria-invalid={!!err.toleransi} aria-describedby={describedBy("toleransi", err.toleransi, true)} />
+                <span className="pre">%</span>
+              </div>
+            </Field>
             <button type="submit" className="btn pri block">Simpan pengaturan</button>
           </fieldset>
         </form>
@@ -90,7 +137,16 @@ export default function Pengaturan() {
             type="button"
             className="btn pri"
             onClick={() => {
-              ubahPengaturan({ feePersen: nFee! / 100, satuanDasarFee: dasar, batasDataLamaHari: nLama!, ambangLonjakanPersen: nAmbang! });
+              ubahPengaturan({
+                feePersen: nFee! / 100,
+                satuanDasarFee: dasar,
+                batasDataLamaHari: nLama!,
+                ambangLonjakanPersen: nAmbang!,
+                ambangLikuiditasTokenUsd: nLikuid!,
+                ambangDustUsd: nDust!,
+                batasLiveLamaMenit: nLiveLama!,
+                toleransiCocokPersen: nToleransi!,
+              });
               setYakin(false);
               tampilkan("Pengaturan tersimpan. Semua posisi sudah diperbarui.");
             }}

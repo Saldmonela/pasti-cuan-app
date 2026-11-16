@@ -80,6 +80,9 @@ export default function Transaksi() {
                       </div>
                     )}
                     {p.status === "ditolak" && <div className="s dn">Ditolak: {p.alasan}</div>}
+                    {p.status === "menunggu" && data.arus.some((a) => a.permintaanId === p.id) && (
+                      <div className="s up">Transfer sudah terlihat di wallet. Angka final dihitung di snapshot resmi berikutnya.</div>
+                    )}
                     {p.catatan && <div className="s">Catatan: {p.catatan}</div>}
                     {p.status === "menunggu" && (
                       <div className="acts">

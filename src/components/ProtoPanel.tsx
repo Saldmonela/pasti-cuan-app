@@ -4,11 +4,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconFlask } from "@tabler/icons-react";
-import { SKENARIO, useStore } from "@/lib/store";
+import { waktu } from "@/lib/format";
+import { isoWib, ms } from "@/lib/onchain";
+import { LOMPATAN, SKENARIO, useStore } from "@/lib/store";
 import { Sheet } from "./ui";
 
 export default function ProtoPanel() {
-  const { data, saya, masuk, keluar, skenario, setSkenario, reset } = useStore();
+  const { data, saya, masuk, keluar, skenario, setSkenario, reset, sekarang, majukanWaktu } = useStore();
   const [buka, setBuka] = useState(false);
   const router = useRouter();
   const akun = data.anggota.filter((a) => a.aktif);
@@ -50,6 +52,33 @@ export default function ProtoPanel() {
             >
               Keluar
             </button>
+          </div>
+        </div>
+        <div className="field">
+          <span className="flabel">Waktu prototype</span>
+          <p className="note">
+            Sekarang {waktu(isoWib(sekarang))}. Jam ikut berjalan selama halaman terbuka; setoran Hafiz terdeteksi 13.06.
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {LOMPATAN.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                className="btn sm ton"
+                style={{ whiteSpace: "normal", height: "auto", minHeight: 44, padding: "8px 14px", textAlign: "left", justifyContent: "flex-start" }}
+                disabled={sekarang >= ms(l.ke)}
+                onClick={() => {
+                  majukanWaktu(l.id);
+                  setBuka(false);
+                }}
+              >
+                <span>
+                  Ke {l.label.replace(" 2026", "")}
+                  <br />
+                  <span style={{ fontWeight: 400 }}>{l.ket}</span>
+                </span>
+              </button>
+            ))}
           </div>
         </div>
         <div className="field">

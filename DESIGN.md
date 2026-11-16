@@ -291,7 +291,7 @@ Palet sage dan hijau yang kalem, dengan satu warna limau terang sebagai tanda ak
 - **Body** (400, 14px, 1.45): label baris dan isi kartu.
 - **Label** (400, 13px): label di atas angka besar ("Nilai kamu") dan baris keterangan seperti "Ikut 29 hari, sejak 16 Okt 2026".
 - **Figure Small** (500, 13px, tabular): baris untung/rugi di bawah nilai ("−US$11,01 (−1,33%) · 30H").
-- **Caption** (400, 12–12.5px): stempel waktu ("Data per 14 Nov 2026, 08.00 WIB"), angka SOL kecil di bawah total, legenda porsi, dan catatan penjelas.
+- **Caption** (400, 12–12.5px): stempel waktu ("Nilai live per 15 Nov 2026, 13.03 WIB · Snapshot resmi 15 Nov 2026, 08.00 WIB"), angka SOL kecil di bawah total, legenda porsi, dan catatan penjelas.
 - **Tag** (600, 11px, tabular): tag ROI dan isi tooltip grafik.
 
 ### Named Rules
@@ -303,7 +303,7 @@ Palet sage dan hijau yang kalem, dengan satu warna limau terang sebagai tanda ak
 
 Satu kolom, mobile-first. Kanvas sage memenuhi layar dengan padding samping 16px. Header sapaan duduk langsung di atas kanvas (padding atas 28px, bawah 20px, inset 4px), lalu kartu-kartu bertumpuk dengan jarak 12px. Isi kartu memakai padding 20px.
 
-Ritme di dalam kartu: label ke angka besar rapat (4px), angka ke baris untung/rugi 6px, lalu blok grafik diberi ruang lebih lega (20px di atas, 14px di bawah). Kontrol satuan (USD | SOL) dan rentang (7H | 30H | Semua) berada di satu baris, satu di kiri dan satu di kanan. Tombol Setor dan Tarik berbagi lebar sama dalam grid 2 kolom dengan jarak 8px, 16px di bawah kontrol.
+Ritme di dalam kartu: label ke angka besar rapat (4px), angka ke baris untung/rugi 6px, lalu blok grafik diberi ruang lebih lega (20px di atas, 14px di bawah). Kontrol satuan (USD | SOL) dan rentang (24J | 7H | 30H | Semua) berada di satu baris, satu di kiri dan satu di kanan. Tombol Setor dan Tarik berbagi lebar sama dalam grid 2 kolom dengan jarak 8px, 16px di bawah kontrol.
 
 Urutan kartu di Beranda mengikuti PRD: (1) kartu nilai: Nilai kamu, untung/rugi rentang, grafik, kontrol satuan & rentang, Setor/Tarik; (2) "Dari mana nilai kamu": modal dasar, untung/rugi + ROI, fee terutang, garis total, nilai bersih USD dan SOL; (3) "Porsi kamu di pool": persen, bar porsi semua anggota, legenda, lama ikut; (4) "Dalam SOL": untung/rugi SOL dan catatan USD vs SOL.
 
@@ -343,7 +343,25 @@ Tegas tapi ramah. Tingginya 48px, sudutnya 24px, labelnya Title 600 15px dengan 
 - **Trek:** latar kanvas sage, sudut 24px, padding 3px.
 - **Opsi:** tinggi 30px, padding 0 12px, 12.5px 600, warna tinta redup. Saat hover berubah jadi tinta.
 - **Terpilih:** latar hijau hutan, teks hijau limau, bayangan "opsi terangkat". Perpindahan warna 150ms.
-- Dipakai berpasangan dalam satu baris: satuan (USD | SOL) di kiri, rentang (7H | 30H | Semua) di kanan. Default USD dan 30H. Pilihan satuan dipakai bersama di semua grafik.
+- **Satuan** (PRD v1.2): segmented control 3 ikon di kanan atas kartu, sejajar label: "$" (USD), logo Solana (SOL), dan "$ + logo Solana" (Bandingkan). Tiap tombol minimal 44 × 44px dan punya nama aksesibel ("Tampilkan dalam USD", dst.). Pilihan dipakai bersama di semua grafik.
+- **Rentang** (24J | 7H | 30H | Semua, default 24J) berada di bawah grafik, di atas tombol Setor/Tarik.
+
+### Scrub Grafik (BR-23)
+- Tidak ada tooltip melayang. Selama jari menyentuh grafik (atau kursor di atasnya), angka besar, baris untung/rugi, dan baris waktu di kartu berganti ke titik terdekat secara horizontal. Garis vertikal putus-putus dan titik bulat menandai posisinya.
+- Transaksi di titik itu tampil sebagai chip `forest-wash` di bawah baris waktu, contoh "Tarik: Belum dicocokkan US$731,51".
+- Melepas jari atau kursor keluar mengembalikan nilai live. Di HP scrub baru dimulai saat jari bergerak horizontal, jadi geser vertikal tetap menggulir halaman.
+
+### Titik Estimasi (BR-24)
+- Grafik yang memuat riwayat estimasi menampilkan keterangan caption di bawah grafik: "Sebelum 14 Nov 2026: estimasi per jam".
+- Saat titik estimasi di-scrub, chip `forest-wash` "Estimasi dari harga pasar per jam" tampil paling depan, sebelum chip transaksi.
+
+### Mode Bandingkan (BR-22)
+- Angka besar menjadi dua angka berdampingan (Figure 26px 800), masing-masing dengan persen di bawahnya.
+- Grafik menggambar dua garis persen dengan satu sumbu Y dan garis 0% tipis: USD garis penuh `forest-ink`, SOL putus-putus `ink-muted`. Legenda kecil di bawah grafik. Tanpa arsiran.
+
+### Saldo Pool dan Rekonsiliasi (BR-19)
+- Angka besar Pool = isi wallet, sama dengan yang terlihat di Jupiter. Selisih dengan total anggota dijelaskan di balik ikon info 44px di samping angka besar, bukan paragraf yang selalu tampil.
+- Di bawah total tabel anggota tampil baris rekonsiliasi kecil: "Total anggota · Belum diproses · Isi wallet".
 
 ### Cards / Containers
 - **Corner Style:** 24px.
@@ -410,8 +428,18 @@ Ditetapkan oleh prototype (form Setor, Tarik, saldo harian, anggota, pengaturan)
 ### Tab Saring
 - Trek putih di atas kanvas, opsi terpilih seperti Kontrol Segmen (hutan + limau) dan menyertakan jumlah item ("Menunggu 3").
 
-### Navigasi Halaman Tugas
-- Halaman tugas (Setor, Tarik, Log, semua halaman Kelola) memakai bar atas dengan tombol kembali bulat 44px dan judul 17px 700, tanpa navigasi pil di bawah. Navigasi pil hanya ada di halaman utama (Beranda, Pool, Transaksi, Kelola untuk pengelola, Lainnya). Item Kelola punya badge limau berisi jumlah permintaan menunggu.
+### Daftar Arus Onchain
+- Satu baris per transfer: ikon arah di lingkaran (masuk ↙, keluar ↗), judul "Keluar 730,51 USDC" dengan chip status, lalu waktu, alamat lawan, dan saran pencocokan dalam caption. Nilai USD di kanan, bertanda "+" atau "−".
+- Chip status arus: **Belum dicocokkan** memakai warna peringatan (sama dengan Menunggu), **Dicocokkan** memakai basuhan untung, **Biaya pool** dan **Bukan arus** memakai kanvas sage.
+- Chip sumber snapshot: **Otomatis** basuhan untung, **Koreksi** peringatan, **Manual** dan **Impor** kanvas sage.
+- Aksi menandai dibuka di lembar bawah: pilihan radio (cocokkan, buat permintaan, biaya pool, bukan arus), lalu isian yang relevan saja. Satu tombol primary di kanan bawah.
+
+### Navigasi Antar Halaman
+- **Navigasi pil ada di semua halaman**, kecuali alur uang Setor dan Tarik. Di dua halaman itu navbar disembunyikan supaya pengguna fokus mengisi jumlah, keyboard HP tidak tertutup, dan form tidak ditinggal setengah jalan (keputusan 15 Nov 2026).
+- **Sub-halaman** (Setor, Tarik, Log, semua halaman Kelola) juga punya bar atas: tombol kembali bulat 44px dan judul 17px 700. Tombol kembali membawa ke halaman sebelumnya. Kalau halaman dibuka langsung dari link, tombol ini ke halaman induknya (Beranda, Lainnya, atau Kelola).
+- **Tab yang menyala** adalah tab induk halaman yang sedang dibuka: semua halaman Kelola menyalakan Kelola, Log menyalakan Lainnya. Di halaman tab itu sendiri ditandai `aria-current="page"`, di sub-halaman `aria-current="true"`.
+- Item Kelola punya badge limau berisi jumlah permintaan menunggu ditambah transfer onchain yang belum dicocokkan.
+- Pengguna tidak boleh pernah berada di halaman tanpa navbar dan tanpa tombol kembali.
 
 ## Do's and Don'ts
 
@@ -420,7 +448,7 @@ Ditetapkan oleh prototype (form Setor, Tarik, saldo harian, anggota, pengaturan)
 - **Do** pakai hijau limau hanya untuk satu aksi utama per kartu, avatar, dan teks opsi segmen terpilih, selalu bersama hijau hutan.
 - **Do** tulis setiap angka uang dengan digit tabular, format Indonesia (US$1.234,56; 10,8461 SOL), dan tanda "+" atau "−".
 - **Do** jadikan nilai paling penting di layar satu-satunya teks Display (Inter 800, 40px).
-- **Do** tampilkan stempel waktu "Data per [tanggal], [jam] WIB" di bagian atas setiap layar yang memuat angka.
+- **Do** tampilkan stempel waktu di bagian atas setiap layar yang memuat angka: "Nilai live per [tanggal], [jam] WIB · Snapshot resmi [tanggal], 08.00 WIB". Bila belum ada pembacaan sesudah snapshot, cukup "Data per [tanggal], 08.00 WIB". Bila nilai live lebih dari 15 menit, bagian pertama berganti "Nilai terakhir diperbarui [jam] WIB" dengan warna `warning-ink` (BR-20).
 - **Do** tunjukkan asal angka saat menampilkan nilai bersih: modal dasar, untung/rugi, fee, lalu total.
 
 ### Don't:

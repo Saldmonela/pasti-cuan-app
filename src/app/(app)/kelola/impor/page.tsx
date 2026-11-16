@@ -1,5 +1,6 @@
 "use client";
 // Impor riwayat awal (US-06): unggah 2 template CSV, pratinjau posisi tiap orang, lalu impor.
+// Saldo SOL dihitung ulang dari harga pasar CoinGecko, dan titik estimasi per jam dibuat sekali (BR-24).
 import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck, IconDownload, IconFileSpreadsheet } from "@tabler/icons-react";
 import { BackBar, KhususPengelola, Sheet, StatusBanners } from "@/components/ui";
@@ -18,7 +19,8 @@ function unduh(nama: string, isi: string) {
 }
 
 export default function Impor() {
-  const { saya, data, impor, batalkanImpor, tampilkan, offline } = useStore();
+  const { saya, data, impor, batalkanImpor, buatUlangEstimasi, tampilkan, offline } = useStore();
+  const [pasarGagal, setPasarGagal] = useState(false);
   const [snapCsv, setSnapCsv] = useState<{ nama: string; isi: string } | null>(null);
   const [txCsv, setTxCsv] = useState<{ nama: string; isi: string } | null>(null);
   const [pv, setPv] = useState<Pratinjau | null>(null);
@@ -27,7 +29,8 @@ export default function Impor() {
   if (!saya) return null;
   if (saya.peran !== "pengelola") return (<><BackBar judul="Impor riwayat" ke="/kelola" /><main><KhususPengelola /></main></>);
 
-  const sudah = data.snapshots.length > 0 || data.permintaan.some((p) => p.sumber === "impor");
+  const sudah = data.snapshots.some((x) => x.sumber === "impor") || data.permintaan.some((p) => p.sumber === "impor");
+  const snapImpor = data.snapshots.filter((x) => x.sumber === "impor");
   const logImpor = data.log.find((l) => l.tabel === "impor" && l.aksi === "insert");
 
   function baca(f: File | undefined, set: (v: { nama: string; isi: string }) => void) {
@@ -38,7 +41,7 @@ export default function Impor() {
     });
   }
   function lihat(s: string, t: string) {
-    setPv(pratinjau(s, t, data.anggota, data.pengaturan, saya!.id));
+    setPv(pratinjau(s, t, data.anggota, data.pengaturan, saya!.id, { pasarGagal }));
   }
   const pakaiContoh = (salah: boolean) => {
     const c = contohCsv(salah);
@@ -59,9 +62,33 @@ export default function Impor() {
               <IconCircleCheck size={20} className="up" aria-hidden="true" /> Riwayat sudah diimpor
             </h2>
             <p>
-              {data.snapshots.length} saldo harian dan {data.permintaan.filter((p) => p.sumber === "impor").length} transaksi
+              {snapImpor.length} saldo harian dan {data.permintaan.filter((p) => p.sumber === "impor").length} transaksi
               {logImpor ? `, diimpor ${tanggal(logImpor.pada)}` : ""}.
             </p>
+            {data.estimasi ? (
+              <p className="note" style={{ marginTop: 8 }}>
+                Grafik riwayat memakai titik estimasi per jam dari harga SOL pasar (BR-24), hanya untuk grafik.
+              </p>
+            ) : (
+              <div className="banner warn" style={{ marginTop: 10 }}>
+                <IconAlertTriangle size={18} aria-hidden="true" />
+                <div>
+                  <p>Titik estimasi per jam belum dibuat karena harga SOL pasar tidak bisa diambil saat impor. Grafik riwayat memakai snapshot harian.</p>
+                  <button
+                    type="button"
+                    className="btn ton sm"
+                    style={{ marginTop: 8 }}
+                    disabled={offline}
+                    onClick={() => {
+                      const h = buatUlangEstimasi();
+                      if (h.ok) tampilkan("Titik estimasi per jam dibuat ulang.");
+                    }}
+                  >
+                    Buat ulang estimasi
+                  </button>
+                </div>
+              </div>
+            )}
             <p className="note" style={{ marginTop: 8 }}>
               Impor hanya bisa dibatalkan sebelum ada transaksi baru yang diproses lewat app. Membatalkan akan menghapus semua data impor.
             </p>
@@ -75,10 +102,11 @@ export default function Impor() {
             <section className="card form" aria-labelledby="unggah">
               <h2 id="unggah" style={{ marginBottom: -4 }}>Unggah template</h2>
               <p className="note">
-                Salin data dari Tracker_LP_v3 (USD) dan Laporan Harian (SOL) ke dua template ini sekali saja. Format tanggal YYYY-MM-DD, desimal pakai titik.
+                Salin data dari Tracker_LP_v3 ke dua template ini sekali saja. Saldo SOL dari Laporan Harian boleh dikosongkan: app menghitungnya dari harga
+                SOL pasar jam 08.00 WIB. Format tanggal YYYY-MM-DD, desimal pakai titik.
               </p>
               {[
-                { id: "f1", label: "snapshot.csv", kolom: "tanggal, nilai_usd, saldo_sol, harga_sol_referensi", v: snapCsv, set: setSnapCsv },
+                { id: "f1", label: "snapshot.csv", kolom: "tanggal, nilai_usd, saldo_sol (opsional, pembanding)", v: snapCsv, set: setSnapCsv },
                 { id: "f2", label: "transaksi.csv", kolom: "tanggal_efektif, nama, jenis, jumlah_usd", v: txCsv, set: setTxCsv },
               ].map((x) => (
                 <div className="field" key={x.id}>
@@ -95,6 +123,12 @@ export default function Impor() {
                   <p className="hint">Kolom: {x.kolom}</p>
                 </div>
               ))}
+              <label className="check">
+                <input type="checkbox" checked={pasarGagal} onChange={(e) => { setPasarGagal(e.target.checked); setPv(null); }} />
+                <span>
+                  Simulasikan harga pasar (CoinGecko) tidak bisa diambil <span className="mu">· khusus prototype</span>
+                </span>
+              </label>
               <button type="button" className="btn ton block" disabled={!snapCsv || !txCsv} onClick={() => lihat(snapCsv!.isi, txCsv!.isi)}>
                 Lihat pratinjau
               </button>
@@ -112,6 +146,9 @@ export default function Impor() {
                 <h2 id="pv">Pratinjau</h2>
                 <p>
                   {pv.snapshots.length} saldo harian, {pv.transaksi.length} transaksi.
+                  {pv.estimasi > 0 && pv.snapshots.length > 0
+                    ? ` Akan dibuat sekitar ${pv.estimasi} titik estimasi per jam (${tanggal(pv.snapshots[0].tanggal)} sampai ${tanggal(pv.snapshots[pv.snapshots.length - 1].tanggal)}) untuk grafik.`
+                    : ""}
                 </p>
                 {pv.kesalahan.length > 0 && (
                   <div className="banner warn" role="alert" style={{ background: "var(--loss-wash)", color: "var(--loss)", marginTop: 12 }}>
@@ -156,7 +193,7 @@ export default function Impor() {
                   style={{ marginTop: 16 }}
                   disabled={!!pv.kesalahan.length || offline}
                   onClick={() => {
-                    const h = impor(pv.snapshots, pv.transaksi);
+                    const h = impor(pv.snapshots, pv.transaksi, pv.estimasi > 0);
                     if (!h.ok) return setErr(h.pesan);
                     tampilkan(`Riwayat diimpor: ${pv.snapshots.length} saldo harian dan ${pv.transaksi.length} transaksi.`);
                     setPv(null);

@@ -1,24 +1,38 @@
 "use client";
-// Pool (US-08 + US-05): grafik saldo pool, posisi semua anggota, status cek data.
+// Pool (US-08 + US-05): saldo pool = isi wallet (BR-19), grafik, posisi semua anggota dengan NAV live
+// dan baris rekonsiliasi ke isi wallet, status cek data.
 import { useState } from "react";
-import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
-import Chart from "@/components/Chart";
-import { GagalMuat, Memuat, PageHeader, Seg, StatusBanners } from "@/components/ui";
-import { deretPool, untungRugiRentang } from "@/lib/engine";
+import { IconAlertTriangle, IconCircleCheck, IconInfoCircle } from "@tabler/icons-react";
+import KartuGrafik, { useWaktuLive } from "@/components/KartuGrafik";
+import { GagalMuat, Memuat, PageHeader, StatusBanners } from "@/components/ui";
 import { arah, bertanda, persen, uang, usd } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Rentang } from "@/lib/types";
-import { grafikPool, WARNA_PORSI } from "@/lib/view";
+import { grafikKosong, WARNA_PORSI } from "@/lib/view";
 
 export default function Pool() {
-  const { saya, hasil, satuan, setSatuan, skenario, cekGagal, data } = useStore();
-  const [rentang, setRentang] = useState<Rentang>("30H");
+  const { saya, hasil, mode, setMode, skenario, cekGagal, data, arus, seri: seriRentang, setSkenario } = useStore();
+  const [rentang, setRentang] = useState<Rentang>("24J");
+  const [info, setInfo] = useState(false);
+  const waktuLive = useWaktuLive();
   if (!saya) return null;
   if (skenario === "memuat") return (<><PageHeader judul="Pool" /><main><Memuat kartu={3} /></main></>);
   if (skenario === "gagal") return (<><PageHeader judul="Pool" /><main><GagalMuat /></main></>);
 
-  const rr = untungRugiRentang(deretPool(hasil.riwayatPool, satuan), rentang);
-  const nilai = satuan === "USD" ? hasil.pool.nilaiUsd : hasil.pool.saldoSol;
+  const seri = seriRentang(rentang);
+  const kosong = grafikKosong(seri, rentang, hasil.riwayatPool.length);
+  const live = hasil.live;
+  const jamLive = live ? live.dibacaPada.slice(11, 16).replace(":", ".") : null;
+  // angka besar = isi wallet, sama dengan Jupiter; nilai disesuaikan hanya untuk NAV (BR-19)
+  const isi = live ? { usd: live.nilaiMentahUsd, sol: live.nilaiMentahUsd / live.harga } : { usd: hasil.pool.nilaiUsd, sol: hasil.pool.saldoSol };
+  const belumDiproses = live ? live.arusDinetralkanUsd : 0;
+  const adaSelisih = Math.abs(belumDiproses) >= 0.01;
+  // penarikan yang transfernya sudah dicocokkan, menunggu snapshot berikutnya
+  const diproses = new Set(
+    data.permintaan
+      .filter((p) => p.status === "menunggu" && p.jenis === "tarik" && arus.some((a) => a.permintaanId === p.id))
+      .map((p) => p.anggotaId),
+  );
   const investor = hasil.posisi.filter((p) => p.peran === "investor" && (p.unit > 1e-9 || p.punyaSetoran)).sort((a, b) => b.porsi - a.porsi);
   const pengelola = hasil.posisi.find((p) => p.id === hasil.pengelola.id);
   const totalNet = hasil.posisi.reduce((a, p) => a + p.netUsd, 0) + hasil.pengelola.feeTerutangTotal;
@@ -39,29 +53,48 @@ export default function Pool() {
       <PageHeader judul="Pool" />
       <main>
         <StatusBanners />
-        <section className="card" aria-labelledby="saldo-pool">
-          <div className="lb" id="saldo-pool">Saldo pool {data.pengaturan.namaPool}</div>
-          <div className="big">{uang(nilai, satuan)}</div>
-          <div className={`pl ${arah(rr.jumlah, satuan === "USD" ? 2 : 4)}`}>
-            {rentang}: {bertanda(rr.jumlah, satuan)}
-          </div>
-          {hasil.riwayatPool.length < 2 ? (
-            <div className="chart-empty">Grafik muncul setelah ada data 2 hari.</div>
-          ) : skenario === "grafikGagal" ? (
-            <div className="chart-empty" role="alert">Grafik belum bisa dimuat. Coba lagi.</div>
-          ) : (
-            <Chart titik={grafikPool(hasil.riwayatPool, satuan, rentang)} label={`Grafik saldo pool dalam ${satuan}, rentang ${rentang}`} />
-          )}
-          <p className="cap">
-            <span className="mk" aria-hidden="true" />
-            Titik bertanda = ada setoran atau penarikan. Lonjakan di titik itu bukan untung.
+        <KartuGrafik
+          id="saldo-pool"
+          label={`Saldo pool ${data.pengaturan.namaPool}`}
+          info={
+            adaSelisih ? (
+              <button type="button" className="info-btn" aria-expanded={info} aria-controls="info-selisih" aria-label="Kenapa angka ini berbeda dari total anggota" onClick={() => setInfo(!info)}>
+                <IconInfoCircle size={20} aria-hidden="true" />
+              </button>
+            ) : undefined
+          }
+          catatan={
+            adaSelisih && info ? (
+              <p className="note info-isi" id="info-selisih">
+                Isi wallet sekarang {usd(isi.usd)}. {usd(Math.abs(belumDiproses))} sudah {belumDiproses > 0 ? "keluar dari" : "masuk ke"} wallet tapi belum
+                diproses ke unit, jadi nilai tiap orang masih dihitung seolah-olah dana itu {belumDiproses > 0 ? "ada" : "belum ada"}. Akan beres di snapshot
+                berikutnya.
+              </p>
+            ) : undefined
+          }
+          seri={seri}
+          live={isi}
+          waktuLive={waktuLive}
+          mode={mode}
+          onMode={setMode}
+          rentang={rentang}
+          onRentang={setRentang}
+          kosong={kosong}
+          gagal={skenario === "grafikGagal"}
+          onCobaLagi={() => setSkenario("normal")}
+          keterangan={
+            <p className="cap">
+              <span className="mk" aria-hidden="true" />
+              Titik bertanda = ada setoran atau penarikan. Naik-turun di titik itu bukan untung atau rugi.
+              {jamLive ? ` Titik terakhir = isi wallet ${jamLive} WIB.` : ""}
+            </p>
+          }
+        >
+          <p className="note" style={{ marginTop: 14 }}>
+            Harga SOL {jamLive ? `${jamLive} WIB` : "hari ini"} {usd(hasil.pool.harga)}
+            {jamLive ? ", dibaca otomatis dari wallet." : ", dihitung dari saldo USD dibagi saldo SOL."}
           </p>
-          <div className="ctl">
-            <Seg label="Satuan" nilai={satuan} opsi={["USD", "SOL"]} onChange={setSatuan} />
-            <Seg label="Rentang" nilai={rentang} opsi={["7H", "30H", "Semua"] as Rentang[]} onChange={setRentang} />
-          </div>
-          <p className="note" style={{ marginTop: 14 }}>Harga SOL hari ini {usd(hasil.pool.harga)}, dihitung dari saldo USD dibagi saldo SOL.</p>
-        </section>
+        </KartuGrafik>
 
         <section className="card" aria-labelledby="anggota">
           <h2 id="anggota">Posisi semua anggota</h2>
@@ -78,6 +111,7 @@ export default function Pool() {
                   <div className="t">
                     {p.nama}
                     {p.id === saya.id && <span className="chip peran">Kamu</span>}
+                    {diproses.has(p.id) && <span className="chip menunggu">Penarikan diproses</span>}
                     <span className="mu num" style={{ fontWeight: 500 }}>{persen(p.porsi)}</span>
                   </div>
                   <div className="s">
@@ -110,13 +144,18 @@ export default function Pool() {
           </ul>
           <dl className="kv">
             <div className="tot">
-              <dt>Total pool</dt>
+              <dt>{adaSelisih ? "Total anggota" : "Total pool"}</dt>
               <dd>
                 {usd(totalNet)}
                 <small>Porsi {persen(totalPorsi)}</small>
               </dd>
             </div>
           </dl>
+          {adaSelisih && (
+            <p className="rekon num">
+              Total anggota {usd(totalNet)} · Belum diproses {bertanda(-belumDiproses, "USD")} · Isi wallet {usd(isi.usd)}
+            </p>
+          )}
         </section>
 
         <section className="card" aria-labelledby="cek">
@@ -138,7 +177,8 @@ export default function Pool() {
           )}
           <p className="note" style={{ marginTop: 10 }}>
             Dicek setiap kali angka dihitung ulang: tidak ada unit negatif, tidak ada penarikan melebihi nilai bersih, setiap transaksi punya
-            saldo harian, dan total nilai semua anggota sama dengan saldo pool.
+            saldo harian, total nilai semua anggota sama dengan saldo pool, dan tidak ada transfer wallet yang belum dicatat sebelum snapshot
+            terakhir.
           </p>
         </section>
       </main>

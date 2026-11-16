@@ -1,57 +1,45 @@
 // Penyusun data tampilan dari hasil mesin hitung.
-import type { TitikGrafik } from "@/components/Chart";
-import { tanggalAwalRentang, type TitikPool, type TitikSaya } from "./engine";
-import { tanggal, uang, usd } from "./format";
-import type { Rentang, Satuan } from "./types";
+import type { Seri, TitikSeri } from "./engine";
+import { tanggal, usd, waktu } from "./format";
+import type { Rentang } from "./types";
 
-function potong<T extends { tanggal: string }>(t: T[], r: Rentang): T[] {
-  if (!t.length) return t;
-  const mulai = tanggalAwalRentang(t[t.length - 1].tanggal, r);
-  return mulai ? t.filter((p) => p.tanggal >= mulai) : t;
+export const pendek = (r: Rentang) => r === "24J" || r === "7H";
+
+/** Indeks titik pertama yang digambar: rentang pendek ikut menampilkan titik pembanding di awal. */
+export function awalTampil(s: Seri, r: Rentang): number {
+  return pendek(r) ? Math.max(0, s.awal - 1) : s.awal;
 }
 
-const lain = (u: Satuan): Satuan => (u === "USD" ? "SOL" : "USD");
-const jenisLabel = (j: "setor" | "tarik") => (j === "setor" ? "Setoran" : "Penarikan");
+/** Titik harian memakai tanggal; titik nilai memakai jam (BR-23 c). */
+export const labelWaktu = (p: TitikSeri) => (p.harian ? tanggal(p.waktu) : waktu(p.waktu));
 
-/** Grafik nilai saya (US-12). Tooltip: tanggal · nilai · nilai satuan lain · harga SOL · transaksi saya. */
-export function grafikSaya(t: TitikSaya[], u: Satuan, r: Rentang): TitikGrafik[] {
-  return potong(t, r).map((p) => {
-    const v = u === "USD" ? p.netUsd : p.netSol;
-    const o = u === "USD" ? p.netSol : p.netUsd;
-    return {
-      label: p.tanggal,
-      nilai: v,
-      ditandai: p.transaksi.length > 0,
-      judul: `${tanggal(p.tanggal)} · ${uang(v, u)}`,
-      baris: [
-        uang(o, lain(u)),
-        `Harga SOL ${usd(p.harga)}`,
-        ...p.transaksi.map((x) => `${jenisLabel(x.jenis)} ${usd(x.jumlahUsd)}`),
-      ],
-    };
-  });
+/**
+ * Chip transaksi di titik yang disentuh (BR-23 e). Pool menyebut nama: "Tarik: Belum dicocokkan US$731,51".
+ * Grafik saya cukup jumlahnya: "Setoran US$525,00".
+ */
+export function chipTransaksi(p: TitikSeri, jenis: Seri["jenis"]): string[] {
+  const label = (j: "setor" | "tarik") => (j === "setor" ? "Setoran" : "Tarik");
+  const est = p.estimasi ? ["Estimasi dari harga pasar per jam"] : [];
+  if (jenis === "saya") return [...est, ...p.transaksi.map((x) => `${label(x.jenis)} ${usd(x.jumlahUsd)}`)];
+  return [
+    ...est,
+    ...(["setor", "tarik"] as const).flatMap((j) => {
+      const t = p.transaksi.filter((x) => x.jenis === j);
+      return t.length ? [`${label(j)}: ${t.map((x) => `${x.nama} ${usd(x.jumlahUsd)}`).join(", ")}`] : [];
+    }),
+  ];
 }
 
-/** Grafik saldo pool (US-08). Tooltip menyebut transaksi semua anggota hari itu. */
-export function grafikPool(t: TitikPool[], u: Satuan, r: Rentang): TitikGrafik[] {
-  return potong(t, r).map((p) => {
-    const v = u === "USD" ? p.nilaiUsd : p.saldoSol;
-    const o = u === "USD" ? p.saldoSol : p.nilaiUsd;
-    const setor = p.transaksi.filter((x) => x.jenis === "setor");
-    const tarik = p.transaksi.filter((x) => x.jenis === "tarik");
-    return {
-      label: p.tanggal,
-      nilai: v,
-      ditandai: p.transaksi.length > 0,
-      judul: `${tanggal(p.tanggal)} · ${uang(v, u)}`,
-      baris: [
-        uang(o, lain(u)),
-        `Harga SOL ${usd(p.harga)}`,
-        ...(setor.length ? [`Setoran: ${setor.map((x) => `${x.nama} ${usd(x.jumlahUsd)}`).join(", ")}`] : []),
-        ...(tarik.length ? [`Penarikan: ${tarik.map((x) => `${x.nama} ${usd(x.jumlahUsd)}`).join(", ")}`] : []),
-      ],
-    };
-  });
+/** Keterangan kecil di bawah grafik yang memuat titik estimasi (BR-24), contoh "Sebelum 14 Nov 2026: estimasi per jam". */
+export function keteranganEstimasi(s: Seri, r: Rentang): string | null {
+  if (!s.estimasiSampai || !s.titik.slice(awalTampil(s, r)).some((p) => p.estimasi)) return null;
+  return `Sebelum ${tanggal(new Date(s.estimasiSampai + 7 * 3600_000).toISOString())}: estimasi per jam`;
+}
+
+/** Pesan grafik kosong: harian butuh 2 snapshot, 24J butuh 2 titik nilai (sekitar 10 menit). */
+export function grafikKosong(s: Seri, r: Rentang, jumlahHarian: number): string | null {
+  if (r === "24J") return s.titik.length - awalTampil(s, r) < 2 ? "Grafik 24 jam muncul setelah ada data 10 menit." : null;
+  return jumlahHarian < 2 ? "Grafik muncul setelah ada data 2 hari." : null;
 }
 
 export const WARNA_PORSI = ["var(--share-1)", "var(--share-2)", "var(--share-3)", "var(--share-4)"];

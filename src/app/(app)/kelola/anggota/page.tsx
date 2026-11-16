@@ -11,6 +11,7 @@ export default function Anggota() {
   const [nm, setNm] = useState("");
   const [em, setEm] = useState("");
   const [peran, setPeran] = useState<Peran>("investor");
+  const [alamat, setAlamat] = useState("");
   const [err, setErr] = useState<Record<string, string>>({});
   const [errBaris, setErrBaris] = useState<Record<string, string>>({});
   if (!saya) return null;
@@ -18,11 +19,12 @@ export default function Anggota() {
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
-    const h = tambahAnggota({ nama: nm, email: em, peran });
+    const h = tambahAnggota({ nama: nm, email: em, peran, alamatWallet: alamat.split(/[\s,]+/).filter(Boolean) });
     if (!h.ok) return setErr({ [h.field ?? "form"]: h.pesan });
     tampilkan(`${nm.trim()} ditambahkan. Ia bisa masuk dengan akun Google ${em.trim().toLowerCase()}.`);
     setNm("");
     setEm("");
+    setAlamat("");
     setPeran("investor");
     setErr({});
   }
@@ -51,6 +53,11 @@ export default function Anggota() {
                     <div className="s" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.email}>
                       {a.email}
                     </div>
+                    {a.alamatWallet?.length ? (
+                      <div className="s num" style={{ overflowWrap: "anywhere" }}>
+                        Wallet: {a.alamatWallet.join(", ")}
+                      </div>
+                    ) : null}
                     {errBaris[a.id] && <p className="ferr" role="alert" style={{ marginTop: 6 }}>{errBaris[a.id]}</p>}
                     {a.id !== saya.id && (
                       <div className="acts" style={{ marginTop: 6 }}>
@@ -100,6 +107,25 @@ export default function Anggota() {
                 ))}
               </div>
             </div>
+            <Field
+              id="alamat"
+              label="Alamat wallet Solana"
+              opsional
+              error={err.alamat}
+              hint="Untuk menyarankan siapa pemilik transfer di wallet pool. Pisahkan dengan koma bila lebih dari satu. Transfer dari exchange memakai alamat exchange, jadi tetap dicocokkan manual."
+            >
+              <div className={`inp${err.alamat ? " err" : ""}`}>
+                <input
+                  id="alamat"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={alamat}
+                  onChange={(e) => setAlamat(e.target.value)}
+                  aria-invalid={!!err.alamat}
+                  aria-describedby={describedBy("alamat", err.alamat, true)}
+                />
+              </div>
+            </Field>
             {err.form && <p className="ferr" role="alert">{err.form}</p>}
             <button type="submit" className="btn pri block">Tambah anggota</button>
           </fieldset>

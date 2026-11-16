@@ -1,16 +1,27 @@
 "use client";
-// Catat saldo harian (US-02): input, koreksi dengan konfirmasi hitung ulang (BR-11), peringatan lonjakan.
+// Snapshot saldo (US-02 v1.1): status pembaca wallet, daftar snapshot otomatis/manual, isi manual saat
+// pembacaan gagal, dan koreksi dengan konfirmasi hitung ulang (BR-11) serta peringatan lonjakan.
 import { useState, type SubmitEvent } from "react";
-import { IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleCheck, IconPencil, IconTrash } from "@tabler/icons-react";
 import { BackBar, describedBy, Field, KhususPengelola, Sheet, StatusBanners } from "@/components/ui";
-import { angka, desimal, parseAngka, tanggal, usd } from "@/lib/format";
+import { angka, desimal, parseAngka, sol, tambahHari, tanggal, usd, waktu } from "@/lib/format";
+import { isoWib, ms, msSnapshot, nilaiToken, RINCIAN_1303, WAKTU_1303 } from "@/lib/onchain";
 import { useStore } from "@/lib/store";
+import type { SumberSnapshot } from "@/lib/types";
+
+const LABEL_SUMBER: Record<SumberSnapshot, string> = { otomatis: "Otomatis", manual: "Manual", koreksi: "Koreksi", impor: "Impor" };
 
 type Tunda = { jenis: "lonjakan"; persen: number } | { jenis: "ubah" } | { jenis: "hapus"; tgl: string };
 
 export default function Saldo() {
-  const { saya, data, hariIni, simpanSnapshot, hapusSnapshot, tampilkan, offline } = useStore();
-  const [tgl, setTgl] = useState(hariIni);
+  const { saya, data, hariIni, simpanSnapshot, hapusSnapshot, tampilkan, offline, titik, titikAkhir, lamaLiveMenit, sekarang } = useStore();
+  const adaHariIni = data.snapshots.some((s) => s.tanggal === hariIni);
+  const [bukaForm, setTampilForm] = useState(false);
+  // snapshot hari ini belum ada (pembacaan otomatis gagal): form manual selalu terbuka
+  const tampilForm = bukaForm || !adaHariIni;
+  const [alasan, setAlasan] = useState("");
+  const [tglIsi, setTgl] = useState("");
+  const tgl = tglIsi || hariIni;
   const [usdTeks, setUsd] = useState("");
   const [solTeks, setSol] = useState("");
   const [feeLp, setFeeLp] = useState("");
@@ -21,13 +32,24 @@ export default function Saldo() {
   const [kirim, setKirim] = useState(false);
   const [semua, setSemua] = useState(false);
   if (!saya) return null;
-  if (saya.peran !== "pengelola") return (<><BackBar judul="Saldo harian" ke="/kelola" /><main><KhususPengelola /></main></>);
+  if (saya.peran !== "pengelola") return (<><BackBar judul="Snapshot saldo" ke="/kelola" /><main><KhususPengelola /></main></>);
 
   const nUsd = parseAngka(usdTeks);
   const nSol = parseAngka(solTeks);
   const harga = nUsd && nSol && nUsd > 0 && nSol > 0 ? nUsd / nSol : null;
   const urut = [...data.snapshots].sort((a, b) => (a.tanggal < b.tanggal ? 1 : -1));
   const dipakai = new Set(data.permintaan.filter((p) => p.status === "selesai").map((p) => p.tanggalEfektif));
+  const jam = data.pengaturan.jamSnapshot;
+  const yangDiubah = mode === "ubah" ? data.snapshots.find((x) => x.tanggal === tgl) : undefined;
+  const butuhAlasan = yangDiubah?.sumber === "otomatis" || yangDiubah?.sumber === "koreksi";
+  // NF-10: persentase menit hari ini yang menghasilkan titik nilai
+  const awalHari = ms(hariIni);
+  const menitHariIni = Math.max(1, Math.floor((sekarang - awalHari) / 60_000) + 1);
+  const berhasil = titik.filter((t) => t.ms >= awalHari).length;
+  const persenBerhasil = Math.min(100, (berhasil / menitHariIni) * 100);
+  const lama = lamaLiveMenit > data.pengaturan.batasLiveLamaMenit;
+  const berikut = sekarang >= msSnapshot(hariIni, jam) ? tambahHari(hariIni, 1) : hariIni;
+  const tokenNol = RINCIAN_1303.token.filter((t) => nilaiToken(t, data.pengaturan) === 0).length;
 
   function validasi(): boolean {
     const e: Record<string, string> = {};
@@ -41,6 +63,7 @@ export default function Saldo() {
     else if (desimal(solTeks) > 6) e.nilai = "Saldo SOL maksimal 6 angka di belakang koma.";
     const fl = feeLp.trim() ? parseAngka(feeLp) : 0;
     if (fl === null || fl < 0) e.feeLp = "Fee LP tidak boleh negatif.";
+    if (butuhAlasan && !alasan.trim()) e.alasan = "Alasan koreksi wajib diisi.";
     setErr(e);
     return !Object.keys(e).length;
   }
@@ -56,14 +79,23 @@ export default function Saldo() {
   function simpan() {
     setKirim(true);
     const h = simpanSnapshot(
-      { tanggal: tgl, nilaiUsd: nUsd!, saldoSol: nSol!, feeLpDiklaimSol: feeLp.trim() ? parseAngka(feeLp)! : undefined, catatan: catatan.trim() || undefined },
+      {
+        tanggal: tgl,
+        nilaiUsd: nUsd!,
+        saldoSol: nSol!,
+        feeLpDiklaimSol: feeLp.trim() ? parseAngka(feeLp)! : undefined,
+        catatan: catatan.trim() || undefined,
+        alasan: alasan.trim() || undefined,
+      },
       mode === "ubah",
     );
     setKirim(false);
     setTunda(null);
-    if (!h.ok) return setErr({ [h.field === "tanggal" ? "tgl" : "form"]: h.pesan });
+    if (!h.ok) return setErr({ [h.field === "tanggal" ? "tgl" : (h.field ?? "form")]: h.pesan });
     tampilkan(`Saldo ${tanggal(tgl)} tersimpan. Semua posisi sudah diperbarui.`);
     setMode("baru");
+    setAlasan("");
+    setTampilForm(false);
     setUsd("");
     setSol("");
     setFeeLp("");
@@ -87,17 +119,114 @@ export default function Saldo() {
     setSol(String(s.saldoSol).replace(".", ","));
     setFeeLp(s.feeLpDiklaimSol !== undefined ? String(s.feeLpDiklaimSol).replace(".", ",") : "");
     setCatatan(s.catatan ?? "");
+    setAlasan("");
     setErr({});
+    setTampilForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
     <>
-      <BackBar judul="Saldo harian" ke="/kelola" />
+      <BackBar judul="Snapshot saldo" ke="/kelola" />
       <main>
         <StatusBanners />
+        <section className="card" aria-labelledby="pembaca">
+          <h2 id="pembaca">Pembaca wallet</h2>
+          <p style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }} className={lama ? undefined : "up"}>
+            {lama ? <IconAlertTriangle size={20} aria-hidden="true" /> : <IconCircleCheck size={20} aria-hidden="true" />}
+            <b style={{ fontWeight: 600 }}>{lama ? "Pembacaan tertunda" : "Berjalan normal"}</b>
+          </p>
+          <dl className="kv lines">
+            <div>
+              <dt>Titik nilai terakhir</dt>
+              <dd>{titikAkhir ? waktu(isoWib(titikAkhir.ms)) : "Belum ada"}</dd>
+            </div>
+            {titikAkhir && (
+              <div>
+                <dt>Isi wallet</dt>
+                <dd>
+                  {usd(titikAkhir.nilaiUsd)}
+                  <small>{sol(titikAkhir.saldoSol)}</small>
+                </dd>
+              </div>
+            )}
+            <div>
+              <dt>Menit berhasil hari ini</dt>
+              <dd>{angka(persenBerhasil, 1)}%</dd>
+            </div>
+            <div>
+              <dt>Snapshot otomatis berikutnya</dt>
+              <dd>
+                {tanggal(berikut)}, {jam.replace(":", ".")} WIB
+              </dd>
+            </div>
+          </dl>
+          {titikAkhir?.ms === WAKTU_1303 && (
+            <details style={{ marginTop: 10 }}>
+              <summary className="note" style={{ cursor: "pointer" }}>
+                Rincian pembacaan 13.03 WIB
+              </summary>
+              <dl className="kv" style={{ marginTop: 6 }}>
+                <div>
+                  <dt>Posisi Meteora DLMM</dt>
+                  <dd>{usd(RINCIAN_1303.dlmmUsd)}</dd>
+                </div>
+                <div>
+                  <dt>Fee LP belum diklaim</dt>
+                  <dd>{usd(RINCIAN_1303.feeBelumKlaimUsd)}</dd>
+                </div>
+                <div>
+                  <dt>SOL di wallet ({angka(RINCIAN_1303.solNative, 4)} SOL)</dt>
+                  <dd>{usd(RINCIAN_1303.solNative * RINCIAN_1303.hargaSol)}</dd>
+                </div>
+                {RINCIAN_1303.token
+                  .filter((t) => nilaiToken(t, data.pengaturan) > 0)
+                  .map((t) => (
+                    <div key={t.mint}>
+                      <dt>{t.simbol}</dt>
+                      <dd>{usd(nilaiToken(t, data.pengaturan))}</dd>
+                    </div>
+                  ))}
+                {tokenNol > 0 && (
+                  <div>
+                    <dt>{tokenNol} token tanpa harga atau likuiditas</dt>
+                    <dd>{usd(0)}</dd>
+                  </div>
+                )}
+              </dl>
+            </details>
+          )}
+          <p className="note" style={{ marginTop: 10 }}>
+            Dibaca otomatis tiap menit dari Meteora, Solana RPC, dan Jupiter. Titik nilai pertama sesudah {jam.replace(":", ".")} WIB menjadi snapshot
+            resmi. Isi manual hanya bila pembacaan gagal atau angkanya keliru.
+          </p>
+          {!tampilForm && (
+            <button type="button" className="btn ton sm" style={{ marginTop: 12 }} onClick={() => setTampilForm(true)}>
+              Isi snapshot manual
+            </button>
+          )}
+        </section>
+
+        {tampilForm && (
         <form className="card form" onSubmit={submit} noValidate>
-          <h2 style={{ marginBottom: -4 }}>{mode === "ubah" ? `Ubah saldo ${tanggal(tgl)}` : "Catat saldo"}</h2>
+          <h2 style={{ marginBottom: -4 }}>{mode === "ubah" ? `${butuhAlasan ? "Koreksi" : "Ubah"} snapshot ${tanggal(tgl)}` : "Snapshot manual"}</h2>
+          {titikAkhir && mode === "baru" && (
+            <div className="banner info" style={{ background: "var(--field)" }}>
+              <p>
+                Pembanding, titik nilai terakhir yang berhasil: {waktu(isoWib(titikAkhir.ms))} · {usd(titikAkhir.nilaiUsd)} · {sol(titikAkhir.saldoSol)}.{" "}
+                <button
+                  type="button"
+                  className="linkish"
+                  onClick={() => {
+                    setUsd(angka(titikAkhir.nilaiUsd, 2));
+                    setSol(angka(titikAkhir.saldoSol, 6));
+                  }}
+                >
+                  Pakai angka ini
+                </button>
+              </p>
+            </div>
+          )}
           <fieldset disabled={offline} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
             <Field id="tgl" label="Tanggal" error={err.tgl} hint="Satu tanggal maksimal satu saldo. Dicatat sesudah setoran atau penarikan hari itu.">
               <div className={`inp${err.tgl ? " err" : ""}${mode === "ubah" ? " ro" : ""}`}>
@@ -143,32 +272,40 @@ export default function Saldo() {
                 <textarea id="cat" maxLength={500} rows={2} value={catatan} onChange={(e) => setCatatan(e.target.value)} aria-describedby="cat-hint" />
               </div>
             </Field>
+            {butuhAlasan && (
+              <Field id="alasan" label="Alasan koreksi" error={err.alasan} hint="Wajib untuk snapshot otomatis. Tercatat di log audit.">
+                <div className={`inp${err.alasan ? " err" : ""}`}>
+                  <input id="alasan" maxLength={200} value={alasan} onChange={(e) => setAlasan(e.target.value)} aria-invalid={!!err.alasan} aria-describedby={describedBy("alasan", err.alasan, true)} />
+                </div>
+              </Field>
+            )}
             {err.form && <p className="ferr" role="alert">{err.form}</p>}
-            <div className={mode === "ubah" ? "btn-row" : undefined}>
-              {mode === "ubah" && (
-                <button
-                  type="button"
-                  className="btn ton"
-                  onClick={() => {
-                    setMode("baru");
-                    setTgl(hariIni);
-                    setUsd("");
-                    setSol("");
-                    setErr({});
-                  }}
-                >
-                  Batal ubah
-                </button>
-              )}
-              <button type="submit" className={`btn pri${mode === "baru" ? " block" : ""}`} disabled={kirim}>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn ton"
+                onClick={() => {
+                  setMode("baru");
+                  setTgl(hariIni);
+                  setUsd("");
+                  setSol("");
+                  setAlasan("");
+                  setErr({});
+                  setTampilForm(false);
+                }}
+              >
+                Batal
+              </button>
+              <button type="submit" className="btn pri" disabled={kirim}>
                 {kirim ? "Menyimpan…" : "Simpan"}
               </button>
             </div>
           </fieldset>
         </form>
+        )}
 
         <section className="card" aria-labelledby="riwayat-saldo">
-          <h2 id="riwayat-saldo">Riwayat saldo</h2>
+          <h2 id="riwayat-saldo">Riwayat snapshot</h2>
           {urut.length === 0 ? (
             <p className="note">Belum ada saldo. Catat saldo pertama atau impor riwayat.</p>
           ) : (
@@ -178,11 +315,15 @@ export default function Saldo() {
                   <div className="main">
                     <div className="t">
                       {tanggal(s.tanggal)}
+                      <span className={`chip ${s.sumber === "otomatis" ? "dicocokkan" : s.sumber === "koreksi" ? "belum" : "dibatalkan"}`}>
+                        {LABEL_SUMBER[s.sumber]}
+                      </span>
                       {dipakai.has(s.tanggal) && <span className="chip dibatalkan">Ada transaksi</span>}
                     </div>
                     <div className="s">
                       {angka(s.saldoSol, 4)} SOL · Harga SOL {usd(s.nilaiUsd / s.saldoSol)}
                       {s.diubahPada ? " · diubah" : ""}
+                      {s.alasan ? ` · ${s.alasan}` : ""}
                     </div>
                   </div>
                   <div className="v">{usd(s.nilaiUsd)}</div>

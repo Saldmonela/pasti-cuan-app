@@ -2,19 +2,19 @@
 // Beranda (US-12 + US-01): layout C "Tumpuk kartu". Satu kartu per pertanyaan.
 import Link from "next/link";
 import { useState } from "react";
-import { IconArrowUpRight, IconCalendar, IconChevronRight, IconPlus, IconRefresh } from "@tabler/icons-react";
-import Chart from "@/components/Chart";
-import { Avatar, GagalMuat, Memuat, Seg, Stamp, StatusBanners } from "@/components/ui";
-import { deretSaya, untungRugiRentang } from "@/lib/engine";
+import { IconArrowUpRight, IconCalendar, IconChevronRight, IconPlus } from "@tabler/icons-react";
+import KartuGrafik, { useWaktuLive } from "@/components/KartuGrafik";
+import { Avatar, GagalMuat, Memuat, Stamp, StatusBanners } from "@/components/ui";
 import { arah, bertanda, persen, persenBertanda, tanggal, uang, usd } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Rentang } from "@/lib/types";
-import { grafikSaya, WARNA_PORSI } from "@/lib/view";
+import { grafikKosong, WARNA_PORSI } from "@/lib/view";
 
 export default function Beranda() {
   const s = useStore();
-  const { saya, hasil, satuan, setSatuan, skenario, offline } = s;
-  const [rentang, setRentang] = useState<Rentang>("30H");
+  const { saya, hasil, satuan, mode, setMode, skenario, offline } = s;
+  const [rentang, setRentang] = useState<Rentang>("24J");
+  const waktuLive = useWaktuLive();
   if (!saya) return null;
 
   const header = (
@@ -33,8 +33,8 @@ export default function Beranda() {
   const pengelola = saya.peran === "pengelola";
   const belumSetor = skenario === "belumSetor" || (!pos.punyaSetoran && pos.unit === 0);
   const riwayat = hasil.riwayat[saya.id] ?? [];
-  const rr = untungRugiRentang(deretSaya(riwayat, satuan), rentang);
-  const nilai = satuan === "USD" ? pos.netUsd : pos.netSol;
+  const seri = s.seri(rentang, saya.id);
+  const kosong = grafikKosong(seri, rentang, riwayat.length);
   const sayaMenunggu = s.menunggu.filter((p) => p.anggotaId === saya.id);
   const lainSaya = hasil.posisi.filter((p) => p.unit > 1e-9 || p.id === saya.id).sort((a, b) => b.porsi - a.porsi);
 
@@ -45,65 +45,55 @@ export default function Beranda() {
         <StatusBanners />
         {pengelola && <KartuTugas />}
 
-        <section className="card" aria-labelledby="nilai-kamu">
-          <div className="lb" id="nilai-kamu">Nilai kamu</div>
-          {belumSetor ? (
-            <>
-              <div className="big">{uang(0, satuan)}</div>
-              <p className="note" style={{ margin: "8px 0 16px" }}>
-                Kamu belum punya setoran yang terkonfirmasi. Ajukan setoran pertama kamu.
-              </p>
-              <Link href="/setor" className="btn pri block" aria-disabled={offline} onClick={(e) => offline && e.preventDefault()}>
+        {belumSetor ? (
+          <section className="card" aria-labelledby="nilai-kamu">
+            <div className="lb" id="nilai-kamu">Nilai kamu</div>
+            <div className="big">{uang(0, satuan)}</div>
+            <p className="note" style={{ margin: "8px 0 16px" }}>
+              Kamu belum punya setoran yang terkonfirmasi. Ajukan setoran pertama kamu.
+            </p>
+            <Link href="/setor" className="btn pri block" aria-disabled={offline} onClick={(e) => offline && e.preventDefault()}>
+              <IconPlus size={18} aria-hidden="true" />
+              Setor
+            </Link>
+          </section>
+        ) : (
+          <KartuGrafik
+            id="nilai-kamu"
+            label="Nilai kamu"
+            seri={seri}
+            live={{ usd: pos.netUsd, sol: pos.netSol }}
+            waktuLive={waktuLive}
+            mode={mode}
+            onMode={setMode}
+            rentang={rentang}
+            onRentang={setRentang}
+            kosong={kosong}
+            gagal={skenario === "grafikGagal"}
+            onCobaLagi={() => s.setSkenario("normal")}
+          >
+            <div className="btn-row" style={{ marginTop: 16 }}>
+              <Link href="/setor" className="btn pri" aria-disabled={offline} onClick={(e) => offline && e.preventDefault()} tabIndex={offline ? -1 : undefined}>
                 <IconPlus size={18} aria-hidden="true" />
                 Setor
               </Link>
-            </>
-          ) : (
-            <>
-              <div className="big">{uang(nilai, satuan)}</div>
-              <div className={`pl ${arah(rr.jumlah, satuan === "USD" ? 2 : 4)}`}>
-                {bertanda(rr.jumlah, satuan)} ({persenBertanda(rr.persen)}) · {rentang}
-              </div>
-              {skenario === "grafikGagal" ? (
-                <div className="chart-empty" role="alert">
-                  <p>Grafik belum bisa dimuat. Coba lagi.</p>
-                  <button type="button" className="btn ton sm" onClick={() => s.setSkenario("normal")}>
-                    <IconRefresh size={18} aria-hidden="true" />
-                    Coba lagi
-                  </button>
-                </div>
-              ) : riwayat.length < 2 ? (
-                <div className="chart-empty">Grafik muncul setelah ada data 2 hari.</div>
-              ) : (
-                <Chart titik={grafikSaya(riwayat, satuan, rentang)} label={`Grafik nilai kamu dalam ${satuan}, rentang ${rentang}`} />
-              )}
-              <div className="ctl">
-                <Seg label="Satuan" nilai={satuan} opsi={["USD", "SOL"]} onChange={setSatuan} />
-                <Seg label="Rentang" nilai={rentang} opsi={["7H", "30H", "Semua"] as Rentang[]} onChange={setRentang} />
-              </div>
-              <div className="btn-row" style={{ marginTop: 16 }}>
-                <Link href="/setor" className="btn pri" aria-disabled={offline} onClick={(e) => offline && e.preventDefault()} tabIndex={offline ? -1 : undefined}>
-                  <IconPlus size={18} aria-hidden="true" />
-                  Setor
-                </Link>
-                <Link href="/tarik" className="btn ton" aria-disabled={offline} onClick={(e) => offline && e.preventDefault()} tabIndex={offline ? -1 : undefined}>
-                  <IconArrowUpRight size={18} aria-hidden="true" />
-                  Tarik
-                </Link>
-              </div>
-              {sayaMenunggu.length > 0 && (
-                <Link href="/permintaan" className="cap" style={{ margin: "14px 0 0", textDecoration: "none" }}>
-                  <span className="chip menunggu">Menunggu</span>
-                  <span style={{ flex: 1 }}>
-                    {sayaMenunggu.map((p) => `${p.jenis === "setor" ? "Setoran" : "Penarikan"} ${usd(p.jumlahUsd)}`).join(", ")} sedang diproses
-                    pengelola.
-                  </span>
-                  <IconChevronRight size={16} aria-hidden="true" />
-                </Link>
-              )}
-            </>
-          )}
-        </section>
+              <Link href="/tarik" className="btn ton" aria-disabled={offline} onClick={(e) => offline && e.preventDefault()} tabIndex={offline ? -1 : undefined}>
+                <IconArrowUpRight size={18} aria-hidden="true" />
+                Tarik
+              </Link>
+            </div>
+            {sayaMenunggu.length > 0 && (
+              <Link href="/permintaan" className="cap" style={{ margin: "14px 0 0", textDecoration: "none" }}>
+                <span className="chip menunggu">Menunggu</span>
+                <span style={{ flex: 1 }}>
+                  {sayaMenunggu.map((p) => `${p.jenis === "setor" ? "Setoran" : "Penarikan"} ${usd(p.jumlahUsd)}`).join(", ")} sedang diproses
+                  pengelola.
+                </span>
+                <IconChevronRight size={16} aria-hidden="true" />
+              </Link>
+            )}
+          </KartuGrafik>
+        )}
 
         {!belumSetor && (
           <>
@@ -194,8 +184,8 @@ export default function Beranda() {
 }
 
 function KartuTugas() {
-  const { menunggu, data, hariIni, hasil } = useStore();
-  const saldoHariIni = data.snapshots.some((x) => x.tanggal === hariIni);
+  const { menunggu, data, hariIni, hasil, arusBelum } = useStore();
+  const snapHariIni = data.snapshots.find((x) => x.tanggal === hariIni);
   return (
     <section className="card" aria-labelledby="tugas">
       <div className="card-h">
@@ -216,9 +206,17 @@ function KartuTugas() {
           </dd>
         </div>
         <div>
-          <dt>Saldo {tanggal(hariIni)}</dt>
-          <dd className={saldoHariIni ? "up" : undefined}>
-            {saldoHariIni ? "Sudah dicatat" : <Link href="/kelola/saldo">Belum dicatat</Link>}
+          <dt>Transfer belum dicocokkan</dt>
+          <dd>
+            <Link href="/kelola/arus" style={{ textDecoration: "none" }}>
+              {arusBelum.length ? `${arusBelum.length} transfer` : "Tidak ada"}
+            </Link>
+          </dd>
+        </div>
+        <div>
+          <dt>Snapshot {tanggal(hariIni)}</dt>
+          <dd className={snapHariIni ? "up" : undefined}>
+            {snapHariIni ? (snapHariIni.sumber === "otomatis" ? "Dibuat otomatis" : "Sudah dicatat") : <Link href="/kelola/saldo">Belum ada</Link>}
           </dd>
         </div>
         <div>

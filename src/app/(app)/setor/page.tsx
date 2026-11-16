@@ -12,7 +12,8 @@ export default function Setor() {
   const { saya, ajukan, tampilkan, hariIni, offline, menunggu, data } = useStore();
   const router = useRouter();
   const [jumlah, setJumlah] = useState("");
-  const [tgl, setTgl] = useState(hariIni);
+  const [tglIsi, setTgl] = useState("");
+  const tgl = tglIsi || hariIni;
   const [bukti, setBukti] = useState("");
   const [catatan, setCatatan] = useState("");
   const [err, setErr] = useState<Record<string, string>>({});

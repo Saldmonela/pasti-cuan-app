@@ -151,6 +151,11 @@ export default function Tarik() {
                     </div>
                   </dl>
                   {pos.profitUsd < 0 && <p className="note" style={{ marginTop: 6 }}>Kamu sedang rugi, jadi tidak ada fee yang dipotong.</p>}
+                  {hasil.live && (
+                    <p className="note" style={{ marginTop: 6 }}>
+                      Perkiraan dengan nilai {hasil.live.dibacaPada.slice(11, 16).replace(":", ".")} WIB. Angka final memakai nilai pada tanggal efektif.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="note">Simulasi muncul setelah kamu mengetik jumlah.</p>

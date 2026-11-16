@@ -10,7 +10,7 @@ import type { LogAudit } from "@/lib/types";
 const TABEL: Record<string, LogAudit["tabel"][] | null> = {
   Semua: null,
   Saldo: ["snapshot", "impor"],
-  Permintaan: ["permintaan"],
+  Permintaan: ["permintaan", "arus"],
   Anggota: ["anggota", "pengaturan"],
 };
 

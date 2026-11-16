@@ -1,5 +1,6 @@
 // Komponen bersama. Hanya dipakai dari client component (halaman memakai "use client").
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 import {
   IconAlertTriangle,
@@ -10,7 +11,7 @@ import {
   IconWifiOff,
 } from "@tabler/icons-react";
 import { useStore } from "@/lib/store";
-import { selisihHari, tanggal } from "@/lib/format";
+import { selisihHari, tanggal, waktu } from "@/lib/format";
 import type { Status } from "@/lib/types";
 
 // ---------- kontrol segmen ----------
@@ -27,9 +28,22 @@ export function Seg<T extends string>({ label, nilai, opsi, onChange }: { label:
 }
 
 // ---------- header ----------
+const jam = (iso: string) => iso.slice(11, 16).replace(":", ".");
+
+/** Waktu data (AC-01-01 angka 9): nilai live dan snapshot resmi. BR-20: keterangan bila nilai live lama. */
 export function Stamp() {
-  const { hasil } = useStore();
-  return <div className="stamp">{hasil.tanggalData ? `Data per ${tanggal(hasil.tanggalData)}, 08.00 WIB` : "Belum ada data saldo"}</div>;
+  const { hasil, lamaLiveMenit, data } = useStore();
+  if (!hasil.tanggalData) return <div className="stamp">Belum ada data saldo</div>;
+  const resmi = `Snapshot resmi ${tanggal(hasil.tanggalData)}, ${data.pengaturan.jamSnapshot.replace(":", ".")} WIB`;
+  if (!hasil.live) return <div className="stamp">Data per {tanggal(hasil.tanggalData)}, {data.pengaturan.jamSnapshot.replace(":", ".")} WIB</div>;
+  const lama = lamaLiveMenit > data.pengaturan.batasLiveLamaMenit;
+  return (
+    <div className="stamp">
+      {lama ? <span className="stale">Nilai terakhir diperbarui {jam(hasil.live.dibacaPada)} WIB</span> : `Nilai live per ${waktu(hasil.live.dibacaPada)}`}
+      {" · "}
+      {resmi}
+    </div>
+  );
 }
 
 export function Avatar() {
@@ -53,10 +67,28 @@ export function PageHeader({ judul, stamp = true }: { judul: string; stamp?: boo
   );
 }
 
+// Jumlah halaman yang sudah dibuka di dalam app sejak dimuat (diisi Shell).
+let kunjungan = 0;
+export function catatKunjungan() {
+  kunjungan++;
+}
+
+/** Bar atas sub-halaman. Kembali ke halaman sebelumnya; kalau dibuka langsung dari link, ke halaman induk `ke`. */
 export function BackBar({ judul, ke = "/" }: { judul: string; ke?: string }) {
+  const router = useRouter();
   return (
     <header className="bar">
-      <Link href={ke} className="back" aria-label="Kembali">
+      <Link
+        href={ke}
+        className="back"
+        aria-label="Kembali"
+        onClick={(e) => {
+          if (kunjungan > 1) {
+            e.preventDefault();
+            router.back();
+          }
+        }}
+      >
         <IconChevronLeft size={22} aria-hidden="true" />
       </Link>
       <h1>{judul}</h1>
@@ -66,21 +98,34 @@ export function BackBar({ judul, ke = "/" }: { judul: string; ke?: string }) {
 
 // ---------- banner status (BR-12, BR-15, PWA offline) ----------
 export function StatusBanners() {
-  const { offline, cekGagal, dataLama, hasil, hariIni } = useStore();
+  const { offline, cekGagal, dataLama, hasil, resmi, hariIni, lamaLiveMenit } = useStore();
+  const arusBelumCatat = resmi.cek.penyebab.find((p) => p.includes("transfer di wallet"));
   return (
     <>
       {offline && hasil.tanggalData && (
         <div className="banner dark" role="status">
           <IconWifiOff size={18} aria-hidden="true" />
-          <p>Kamu sedang offline. Data terakhir {tanggal(hasil.tanggalData)}, 08.00 WIB.</p>
+          <p>Kamu sedang offline. Data terakhir {hasil.live ? waktu(hasil.live.dibacaPada) : `${tanggal(hasil.tanggalData)}, 08.00 WIB`}.</p>
         </div>
       )}
       {cekGagal && (
         <div className="banner warn" role="alert">
           <IconAlertTriangle size={18} aria-hidden="true" />
           <p>
-            <b>Angka sedang dicek ulang oleh pengelola.</b> Jangan ajukan penarikan dulu.
+            {arusBelumCatat ? (
+              <b>{arusBelumCatat}</b>
+            ) : (
+              <>
+                <b>Angka sedang dicek ulang oleh pengelola.</b> Jangan ajukan penarikan dulu.
+              </>
+            )}
           </p>
+        </div>
+      )}
+      {!offline && hasil.tanggalData && lamaLiveMenit > 60 && (
+        <div className="banner warn" role="status">
+          <IconAlertTriangle size={18} aria-hidden="true" />
+          <p>Pembacaan wallet sedang terganggu. Angka mungkin tertinggal.</p>
         </div>
       )}
       {dataLama && hasil.tanggalData && (
