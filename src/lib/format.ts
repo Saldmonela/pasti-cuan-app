@@ -80,20 +80,34 @@ export function desimal(teks: string): number {
 // ---------- tanggal ----------
 const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
+/** Pastikan ISO ber-offset atau UTC ("Z" / "+00:00") dikonversi ke tanggal & jam WIB (+07:00) sebelum di-slice. */
+export function wibIso(iso: string): string {
+  if (!iso.includes("T")) return iso;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return new Date(t + 7 * 3600_000).toISOString().slice(0, 19) + "+07:00";
+}
+
 export function tanggal(iso: string): string {
-  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const s = wibIso(iso);
+  const [y, m, d] = s.slice(0, 10).split("-").map(Number);
   return `${d} ${BULAN[m - 1]} ${y}`;
 }
 
 export function tanggalPendek(iso: string): string {
-  const [, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const s = wibIso(iso);
+  const [, m, d] = s.slice(0, 10).split("-").map(Number);
   return `${d} ${BULAN[m - 1]}`;
 }
 
-/** "2026-11-15T07:40:00+07:00" -> "15 Nov 2026, 07.40 WIB" */
+export function jam(iso: string): string {
+  return wibIso(iso).slice(11, 16).replace(":", ".");
+}
+
+/** "2026-11-15T07:40:00+07:00" atau UTC -> "15 Nov 2026, 07.40 WIB" */
 export function waktu(iso: string): string {
-  const jam = iso.slice(11, 16).replace(":", ".");
-  return `${tanggal(iso)}, ${jam} WIB`;
+  const s = wibIso(iso);
+  return `${tanggal(s)}, ${s.slice(11, 16).replace(":", ".")} WIB`;
 }
 
 export function selisihHari(dari: string, sampai: string): number {

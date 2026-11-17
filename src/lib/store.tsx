@@ -3,7 +3,7 @@
 // dan fallback ke data contoh localStorage khusus saat build preview statis (`NEXT_PUBLIC_PROTOTYPE_MODE=1`).
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { hitungPool, seriRentang, terapkanLive, type HasilPool, type Seri } from "./engine";
-import { selisihHari, tambahHari, tanggal, usd, waktu } from "./format";
+import { selisihHari, tambahHari, tanggal, usd, waktu, wibIso } from "./format";
 import { isoWib, MENIT, ms, msSnapshot, MULAI_BACA, semuaTitik, titikEstimasi, type TitikNilai } from "./onchain";
 import { dataAwal, snapshotOtomatis, WAKTU_AWAL } from "./seed";
 import { createSupabaseBrowserClient } from "./supabase/client";
@@ -44,7 +44,7 @@ export const LOMPATAN = [
 
 /** Waktu efektif transfer onchain (BR-18, update 17 Nov 2026 = waktu transfer). */
 export function tanggalEfektifArus(waktuArus: string, jam = "08:00"): string {
-  const tgl = waktuArus.slice(0, 10);
+  const tgl = wibIso(waktuArus).slice(0, 10);
   return ms(waktuArus) < msSnapshot(tgl, jam) ? tgl : tambahHari(tgl, 1);
 }
 
@@ -525,7 +525,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           anggotaId: ang.id,
           jenis,
           jumlahUsd: Math.round(total * 100) / 100,
-          tanggalTransfer: pilih[0].waktu.slice(0, 10),
+          tanggalTransfer: wibIso(pilih[0].waktu).slice(0, 10),
           buktiTransaksi: pilih.map((x) => x.signature).join(", "),
           status: "menunggu",
           sumber: "app",

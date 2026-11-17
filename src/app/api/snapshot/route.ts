@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { tanggal as fmtTanggal } from "@/lib/format";
+import { tanggal as fmtTanggal, wibIso } from "@/lib/format";
 import { ApiError, jsonError, requireManager } from "@/lib/server/auth";
 import { loadPoolContext } from "@/lib/server/pool";
 
@@ -43,10 +43,10 @@ export async function POST(request: Request) {
       const adaTx = ctx.permintaan.some(
         (p) =>
           p.status === "selesai" &&
-          (p.tanggalEfektif === tgl || p.waktuEfektif?.slice(0, 10) === tgl),
+          (p.tanggalEfektif === tgl || (p.waktuEfektif ? wibIso(p.waktuEfektif).slice(0, 10) === tgl : false)),
       );
       const adaArus = ctx.arusAll.some(
-        (a) => a.status !== "bukan_arus" && a.waktu.slice(0, 10) === tgl,
+        (a) => a.status !== "bukan_arus" && wibIso(a.waktu).slice(0, 10) === tgl,
       );
       const pct = Math.abs((nilaiUsd - prev.nilaiUsd) / prev.nilaiUsd) * 100;
       if (!adaTx && !adaArus && pct > ctx.pengaturan.ambangLonjakanPersen) {

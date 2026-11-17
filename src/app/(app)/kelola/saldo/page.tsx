@@ -4,7 +4,7 @@
 import { useState, type SubmitEvent } from "react";
 import { IconAlertTriangle, IconCircleCheck, IconPencil, IconTrash } from "@tabler/icons-react";
 import { BackBar, describedBy, Field, KhususPengelola, Sheet, StatusBanners } from "@/components/ui";
-import { angka, desimal, parseAngka, sol, tambahHari, tanggal, usd, waktu } from "@/lib/format";
+import { angka, desimal, parseAngka, sol, tambahHari, tanggal, usd, waktu, wibIso } from "@/lib/format";
 import { isoWib, ms, msSnapshot, nilaiToken, RINCIAN_1303, WAKTU_1303 } from "@/lib/onchain";
 import { useStore } from "@/lib/store";
 import type { SumberSnapshot } from "@/lib/types";
@@ -72,9 +72,9 @@ export default function Saldo() {
     const sebelum = urut.find((s) => s.tanggal < tgl);
     if (!sebelum || !nUsd) return null;
     const adaTx = data.permintaan.some(
-      (p) => p.status === "selesai" && (p.tanggalEfektif === tgl || p.waktuEfektif?.slice(0, 10) === tgl),
+      (p) => p.status === "selesai" && (p.tanggalEfektif === tgl || (p.waktuEfektif ? wibIso(p.waktuEfektif).slice(0, 10) === tgl : false)),
     );
-    const adaArus = data.arus.some((a) => a.status !== "bukan_arus" && a.waktu.slice(0, 10) === tgl);
+    const adaArus = data.arus.some((a) => a.status !== "bukan_arus" && wibIso(a.waktu).slice(0, 10) === tgl);
     const pct = (Math.abs(nUsd - sebelum.nilaiUsd) / sebelum.nilaiUsd) * 100;
     return !adaTx && !adaArus && pct > data.pengaturan.ambangLonjakanPersen ? pct : null;
   }

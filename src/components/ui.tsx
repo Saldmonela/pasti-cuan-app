@@ -11,7 +11,7 @@ import {
   IconWifiOff,
 } from "@tabler/icons-react";
 import { useStore } from "@/lib/store";
-import { selisihHari, tanggal, waktu } from "@/lib/format";
+import { jam, selisihHari, tanggal, waktu } from "@/lib/format";
 import type { Status } from "@/lib/types";
 
 // ---------- kontrol segmen ----------
@@ -28,7 +28,6 @@ export function Seg<T extends string>({ label, nilai, opsi, onChange }: { label:
 }
 
 // ---------- header ----------
-const jam = (iso: string) => iso.slice(11, 16).replace(":", ".");
 
 /** Waktu data (AC-01-01 angka 9): nilai live dan snapshot resmi. BR-20: keterangan bila nilai live lama. */
 export function Stamp() {

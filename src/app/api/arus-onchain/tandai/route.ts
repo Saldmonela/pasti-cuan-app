@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hitungPool } from "@/lib/engine";
-import { tanggal as fmtTanggal, usd, waktu as fmtWaktu } from "@/lib/format";
+import { tanggal as fmtTanggal, usd, waktu as fmtWaktu, wibIso } from "@/lib/format";
 import { ms, msSnapshot } from "@/lib/onchain";
 import { ApiError, jsonError, requireManager } from "@/lib/server/auth";
 import { loadPoolContext } from "@/lib/server/pool";
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
           anggota_id: anggotaId,
           jenis,
           jumlah_usd: totalUsd,
-          tanggal_transfer: waktuTransfer.slice(0, 10),
+          tanggal_transfer: wibIso(waktuTransfer).slice(0, 10),
           bukti_transaksi: bukti,
           status: "selesai",
           waktu_efektif: waktuTransfer,

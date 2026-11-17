@@ -12,7 +12,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { KhususPengelola, PageHeader, StatusBanners } from "@/components/ui";
-import { tanggal, usd } from "@/lib/format";
+import { jam as fmtJam, tanggal, usd } from "@/lib/format";
 import { msSnapshot } from "@/lib/onchain";
 import { useStore } from "@/lib/store";
 
@@ -47,7 +47,7 @@ export default function Kelola() {
                 <div className="t">{arusBelum.length ? `${arusBelum.length} transfer belum dicocokkan` : "Semua transfer sudah dicocokkan."}</div>
                 {arusBelum.slice(0, 3).map((a) => (
                   <div className="s" key={a.id}>
-                    {a.arah === "masuk" ? "Masuk" : "Keluar"} {usd(a.nilaiUsd)} · {a.waktu.slice(11, 16).replace(":", ".")} WIB
+                    {a.arah === "masuk" ? "Masuk" : "Keluar"} {usd(a.nilaiUsd)} · {fmtJam(a.waktu)} WIB
                   </div>
                 ))}
               </div>
