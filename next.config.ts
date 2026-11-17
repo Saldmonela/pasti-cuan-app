@@ -17,9 +17,7 @@ const nextConfig: NextConfig = {
         trailingSlash: true,
         env: { NEXT_PUBLIC_PROTOTYPE_MODE: "1" },
       }
-    : {
-        cacheComponents: true,
-      }),
+    : {}),
 };
 
 export default nextConfig;
