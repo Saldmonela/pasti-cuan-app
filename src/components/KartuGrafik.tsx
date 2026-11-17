@@ -162,8 +162,29 @@ export default function KartuGrafik({
         </div>
       )}
       {catatan}
-      <div className={`pl ${arah(bandingkan ? k.ruUsd : ru, u === "USD" ? 2 : 4)}`}>
-        {bandingkan ? `${bertanda(k.ruUsd, "USD")} · ${bertanda(k.ruSol, "SOL")}` : `${bertanda(ru, u)} (${persenBertanda(pr)})`} · {rentang}
+      <div className="pl" style={{ color: "var(--ink-muted)" }}>
+        {bandingkan ? (
+          <>
+            <span className={arah(k.ruUsd, 2)}>{bertanda(k.ruUsd, "USD")}</span>
+            {" · "}
+            <span className={arah(k.ruSol, 4)}>{bertanda(k.ruSol, "SOL")}</span>
+          </>
+        ) : arah(ru, u === "USD" ? 2 : 4) === arah(pr, 2) ? (
+          <span className={arah(ru, u === "USD" ? 2 : 4)}>
+            {bertanda(ru, u)} ({persenBertanda(pr)})
+          </span>
+        ) : (
+          <>
+            <span className={arah(ru, u === "USD" ? 2 : 4)}>{bertanda(ru, u)}</span>
+            {" ("}
+            <span className={arah(pr, 2)}>
+              {persenBertanda(pr)}
+              {seri.jenis === "pool" ? " nilai unit" : ""}
+            </span>
+            {")"}
+          </>
+        )}
+        {` · ${rentang}`}
       </div>
       <div className="stamp" style={{ marginTop: 2 }}>
         {p ? labelWaktu(p) : waktuLive}
@@ -203,7 +224,8 @@ export default function KartuGrafik({
       {!kosong && !gagal && keteranganEstimasi(seri, rentang) && <p className="cap-est">{keteranganEstimasi(seri, rentang)}</p>}
       {bandingkan && !kosong && !gagal && (
         <p className="legend-garis">
-          <span className="g usd" aria-hidden="true" /> USD <span className="g sol" aria-hidden="true" /> SOL · persen sejak awal rentang
+          <span className="g usd" aria-hidden="true" /> USD <span className="g sol" aria-hidden="true" /> SOL ·{" "}
+          {seri.jenis === "pool" ? "persen kinerja unit sejak awal rentang (bukan total saldo)" : "persen untung/rugi sejak awal rentang"}
         </p>
       )}
       {keterangan}
