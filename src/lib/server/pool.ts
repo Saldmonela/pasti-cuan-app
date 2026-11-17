@@ -12,6 +12,35 @@ import type {
 } from "@/lib/types";
 import { mapAnggota } from "./auth";
 
+type TitikRow = {
+  id: number;
+  dibaca_pada: string;
+  resolusi: string;
+  sumber: string;
+  nilai_usd: number | string;
+  saldo_sol: number | string;
+  harga_sol_usd: number | string;
+};
+
+/** PostgREST membatasi 1.000 baris per query; ambil bertahap agar titik live terbaru tidak terpotong. */
+async function fetchAllTitikNilai(admin: ReturnType<typeof createSupabaseAdmin>): Promise<TitikRow[]> {
+  const PAGE = 1000;
+  const rows: TitikRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await admin
+      .from("titik_nilai")
+      .select("id, dibaca_pada, resolusi, sumber, nilai_usd, saldo_sol, harga_sol_usd")
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`Gagal memuat titik nilai: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < PAGE) break;
+  }
+  rows.sort((a, b) => Date.parse(a.dibaca_pada) - Date.parse(b.dibaca_pada));
+  return rows;
+}
+
 export async function loadPoolContext(options: { includeArusDetails?: boolean } = {}) {
   const admin = createSupabaseAdmin();
 
@@ -21,7 +50,7 @@ export async function loadPoolContext(options: { includeArusDetails?: boolean } 
     { data: snapRows, error: snapErr },
     { data: reqRows, error: reqErr },
     { data: arusRows, error: arusErr },
-    { data: titikRows, error: titikErr },
+    titikRows,
     { data: logRows },
     { data: jobRows },
   ] = await Promise.all([
@@ -30,10 +59,7 @@ export async function loadPoolContext(options: { includeArusDetails?: boolean } 
     admin.from("snapshot").select("*").order("tanggal", { ascending: true }),
     admin.from("permintaan").select("*").order("dibuat_pada", { ascending: true }),
     admin.from("arus_onchain").select("*").order("waktu", { ascending: true }),
-    admin
-      .from("titik_nilai")
-      .select("id, dibaca_pada, resolusi, sumber, nilai_usd, saldo_sol, harga_sol_usd")
-      .order("dibaca_pada", { ascending: true }),
+    fetchAllTitikNilai(admin),
     admin.from("log_audit").select("*").order("pada", { ascending: false }).limit(100),
     admin.from("job_log").select("*").order("dibuat_pada", { ascending: false }).limit(5),
   ]);
@@ -43,7 +69,6 @@ export async function loadPoolContext(options: { includeArusDetails?: boolean } 
   if (snapErr) throw new Error(`Gagal memuat snapshot: ${snapErr.message}`);
   if (reqErr) throw new Error(`Gagal memuat permintaan: ${reqErr.message}`);
   if (arusErr) throw new Error(`Gagal memuat arus onchain: ${arusErr.message}`);
-  if (titikErr) throw new Error(`Gagal memuat titik nilai: ${titikErr.message}`);
 
   const pengaturan: Pengaturan = {
     namaPool: cfgRow.nama_pool,
