@@ -1,6 +1,7 @@
 // Golden test dan skenario dari PRD Section 3.3 "Rencana Uji". Toleransi +/- $0,01.
 import { describe, expect, it } from "vitest";
 import { hitungPool, kumulatif, seriHarian, seriRentang, simulasiTarik, terapkanLive, untungRugi } from "./engine";
+import { opsiRentang } from "./view";
 import {
   ALAMAT_POOL,
   deteksiArus,
@@ -381,20 +382,18 @@ describe("titik estimasi riwayat (BR-24)", () => {
 
 describe("kerapatan grafik (BR-21 v1.3)", () => {
   const { c } = konteks(dataAwal());
-  it("24J <= 288, 7H <= 336, 30H <= 360, Semua <= 365 titik (+1 pembanding)", () => {
-    const n = (r: "24J" | "7H" | "30H" | "Semua") => seriRentang(c, r).titik.length;
+  it("24J <= 288, 7H <= 336, Semua <= 365 titik (+1 pembanding)", () => {
+    const n = (r: "24J" | "7H" | "Semua") => seriRentang(c, r).titik.length;
     expect(n("24J")).toBeLessThanOrEqual(289);
     expect(n("7H")).toBeLessThanOrEqual(337);
     // bagian riwayat 7H hanya punya titik estimasi per jam (BR-24), jadi baru 336 setelah seminggu data asli
     expect(n("7H")).toBeGreaterThan(190);
-    expect(n("30H")).toBeLessThanOrEqual(361);
-    expect(n("30H")).toBeGreaterThan(340);
     expect(n("Semua")).toBeLessThanOrEqual(365);
     expect(n("Semua")).toBeGreaterThan(300);
   });
 
   it("riwayat sebelum pembacaan otomatis memakai titik estimasi", () => {
-    const s = seriRentang(c, "30H");
+    const s = seriRentang(c, "Semua");
     expect(s.titik.some((p) => p.estimasi)).toBe(true);
     expect(s.titik.at(-1)!.estimasi).toBe(false);
     expect(s.estimasiSampai).toBe(MULAI_BACA);
@@ -593,5 +592,13 @@ describe("rentang Setoran Terakhir", () => {
     const s = seriRentang(c, "Setoran Terakhir", null);
     expect(s.awal).toBe(1);
     expect(s.titik[s.awal].waktu.slice(0, 10)).toBe("2026-11-13");
+  });
+
+  it("opsiRentang menyembunyikan Setoran Terakhir jika setor <= 1x", () => {
+    const d = dataAwal();
+    expect(opsiRentang(d.permintaan, "faiz")).toEqual(["24J", "7H", "Semua"]);
+    expect(opsiRentang(d.permintaan, "galih")).toEqual(["24J", "7H", "Semua"]);
+    expect(opsiRentang(d.permintaan, "salman")).toEqual(["24J", "7H", "Setoran Terakhir", "Semua"]);
+    expect(opsiRentang(d.permintaan, null)).toEqual(["24J", "7H", "Setoran Terakhir", "Semua"]);
   });
 });

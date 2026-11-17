@@ -4,9 +4,9 @@ export type Status = "menunggu" | "selesai" | "ditolak" | "dibatalkan";
 export type Satuan = "USD" | "SOL";
 /** Kontrol satuan grafik: USD, SOL, atau Bandingkan keduanya dalam persen (BR-22). */
 export type ModeSatuan = Satuan | "Bandingkan";
-export type Rentang = "24J" | "7H" | "30H" | "Setoran Terakhir" | "Semua";
+export type Rentang = "24J" | "7H" | "Setoran Terakhir" | "Semua";
 /** Rentang pendek memakai titik nilai (BR-21), sisanya snapshot harian. */
-export const RENTANG: Rentang[] = ["24J", "7H", "30H", "Setoran Terakhir", "Semua"];
+export const RENTANG: Rentang[] = ["24J", "7H", "Setoran Terakhir", "Semua"];
 
 /** Tanggal disimpan sebagai string ISO "YYYY-MM-DD" (WIB). */
 export type Tanggal = string;

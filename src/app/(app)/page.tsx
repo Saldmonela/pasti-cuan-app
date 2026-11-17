@@ -8,7 +8,7 @@ import { Avatar, GagalMuat, Memuat, Stamp, StatusBanners } from "@/components/ui
 import { arah, bertanda, persen, persenBertanda, tanggal, uang, usd } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Rentang } from "@/lib/types";
-import { grafikKosong, WARNA_PORSI } from "@/lib/view";
+import { grafikKosong, opsiRentang, WARNA_PORSI } from "@/lib/view";
 
 export default function Beranda() {
   const s = useStore();
@@ -68,6 +68,7 @@ export default function Beranda() {
             onMode={setMode}
             rentang={rentang}
             onRentang={setRentang}
+            opsi={opsiRentang(s.data.permintaan, saya.id)}
             kosong={kosong}
             gagal={skenario === "grafikGagal"}
             onCobaLagi={() => s.setSkenario("normal")}

@@ -7,7 +7,6 @@ import type { Rentang } from "@/lib/types";
 const RENTANG_MAP: Record<string, Rentang> = {
   "24j": "24J",
   "7h": "7H",
-  "30h": "30H",
   "setoran terakhir": "Setoran Terakhir",
   setoran_terakhir: "Setoran Terakhir",
   "setoran-terakhir": "Setoran Terakhir",
@@ -26,7 +25,7 @@ export async function GET(request: Request) {
     }
     const rentang = RENTANG_MAP[rentangParam];
     if (!rentang) {
-      throw new ApiError(400, "VALIDASI", "Parameter rentang harus 24j, 7h, 30h, setoran_terakhir, atau semua.");
+      throw new ApiError(400, "VALIDASI", "Parameter rentang harus 24j, 7h, setoran_terakhir, atau semua.");
     }
 
     const ctx = await loadPoolContext({ includeArusDetails: true });

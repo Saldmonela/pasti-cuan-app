@@ -1,9 +1,17 @@
 // Penyusun data tampilan dari hasil mesin hitung.
 import type { Seri, TitikSeri } from "./engine";
 import { tanggal, usd, waktu } from "./format";
-import type { Rentang } from "./types";
+import { RENTANG, type Permintaan, type Rentang } from "./types";
 
 export const pendek = (r: Rentang) => r === "24J" || r === "7H";
+
+/** Opsi rentang grafik: "Setoran Terakhir" hanya tampil bila sudah setor lebih dari 1 kali (kalau 1x sama dengan Semua). */
+export function opsiRentang(permintaan: Permintaan[], anggotaId: string | null): Rentang[] {
+  const jumlahSetor = permintaan.filter(
+    (p) => p.status === "selesai" && p.jenis === "setor" && (!anggotaId || p.anggotaId === anggotaId),
+  ).length;
+  return jumlahSetor > 1 ? RENTANG : RENTANG.filter((r) => r !== "Setoran Terakhir");
+}
 
 /** Indeks titik pertama yang digambar: rentang pendek ikut menampilkan titik pembanding di awal. */
 export function awalTampil(s: Seri, r: Rentang): number {

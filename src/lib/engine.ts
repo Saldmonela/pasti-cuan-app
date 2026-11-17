@@ -572,7 +572,7 @@ export interface Seri {
 
 export function tanggalAwalRentang(terakhir: Tanggal, r: Rentang): Tanggal | null {
   if (r === "Semua" || r === "24J" || r === "Setoran Terakhir") return null;
-  return tambahHari(terakhir, r === "7H" ? -6 : -29);
+  return tambahHari(terakhir, -6);
 }
 
 function setoranTerakhir(permintaan: Permintaan[], anggotaId: string | null, jam: string): { ms: number; tanggal: Tanggal } | null {
@@ -675,7 +675,6 @@ function titikUjung(c: KonteksSeri, ti: TitikNilai, sebelum: TitikSeri, anggotaI
 const INTERVAL: Record<Exclude<Rentang, "Semua" | "Setoran Terakhir">, { panjang: number; langkah: number }> = {
   "24J": { panjang: 24 * 60 * MENIT, langkah: 5 * MENIT },
   "7H": { panjang: 7 * 24 * 60 * MENIT, langkah: 30 * MENIT },
-  "30H": { panjang: 30 * 24 * 60 * MENIT, langkah: 120 * MENIT },
 };
 /** Pilihan interval rentang Semua: yang terkecil dengan jumlah titik <= 365. */
 const INTERVAL_SEMUA = [2, 4, 6, 12, 24].map((j) => j * 60 * MENIT);

@@ -58,6 +58,7 @@ export default function KartuGrafik({
   onMode,
   rentang,
   onRentang,
+  opsi = RENTANG,
   kosong,
   gagal,
   onCobaLagi,
@@ -77,6 +78,7 @@ export default function KartuGrafik({
   onMode: (m: ModeSatuan) => void;
   rentang: Rentang;
   onRentang: (r: Rentang) => void;
+  opsi?: Rentang[];
   kosong: string | null;
   gagal?: boolean;
   onCobaLagi?: () => void;
@@ -206,7 +208,7 @@ export default function KartuGrafik({
       )}
       {keterangan}
       <div className="ctl">
-        <Seg label="Rentang" nilai={rentang} opsi={RENTANG} onChange={onRentang} />
+        <Seg label="Rentang" nilai={rentang} opsi={opsi} onChange={onRentang} />
       </div>
       {children}
     </section>

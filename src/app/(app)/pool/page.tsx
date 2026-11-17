@@ -8,7 +8,7 @@ import { GagalMuat, Memuat, PageHeader, StatusBanners } from "@/components/ui";
 import { arah, bertanda, persen, uang, usd } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Rentang } from "@/lib/types";
-import { grafikKosong, WARNA_PORSI } from "@/lib/view";
+import { grafikKosong, opsiRentang, WARNA_PORSI } from "@/lib/view";
 
 export default function Pool() {
   const { saya, hasil, mode, setMode, skenario, cekGagal, data, arus, seri: seriRentang, setSkenario } = useStore();
@@ -79,6 +79,7 @@ export default function Pool() {
           onMode={setMode}
           rentang={rentang}
           onRentang={setRentang}
+          opsi={opsiRentang(data.permintaan, null)}
           kosong={kosong}
           gagal={skenario === "grafikGagal"}
           onCobaLagi={() => setSkenario("normal")}
