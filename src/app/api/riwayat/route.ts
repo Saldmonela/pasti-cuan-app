@@ -8,6 +8,9 @@ const RENTANG_MAP: Record<string, Rentang> = {
   "24j": "24J",
   "7h": "7H",
   "30h": "30H",
+  "sejak setor": "Sejak Setor",
+  sejak_setor: "Sejak Setor",
+  "sejak-setor": "Sejak Setor",
   semua: "Semua",
 };
 
@@ -23,7 +26,7 @@ export async function GET(request: Request) {
     }
     const rentang = RENTANG_MAP[rentangParam];
     if (!rentang) {
-      throw new ApiError(400, "VALIDASI", "Parameter rentang harus 24j, 7h, 30h, atau semua.");
+      throw new ApiError(400, "VALIDASI", "Parameter rentang harus 24j, 7h, 30h, sejak_setor, atau semua.");
     }
 
     const ctx = await loadPoolContext({ includeArusDetails: true });

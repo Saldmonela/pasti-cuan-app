@@ -567,3 +567,31 @@ describe("Penilaian transaksi onchain pada waktu transfer (BR-18, update 17 Nov 
     expect(h.cek.penyebab.some((p) => p.includes("titik nilai referensi"))).toBe(true);
   });
 });
+
+describe("rentang Sejak Setor", () => {
+  it("investor: mulai dari setoran terakhir tanpa menghitung setoran sebagai profit palsu", () => {
+    const d = dataAwal();
+    const { c } = konteks(d);
+    const s = seriRentang(c, "Sejak Setor", "salman");
+    expect(s.awal).toBe(1);
+    expect(s.titik[s.awal].waktu.slice(0, 10)).toBe("2026-11-08");
+    expect(s.titik[s.awal].arusUsd).toBe(525);
+    const k = kumulatif(s);
+    expect(k[s.awal].ruUsd).toBeLessThan(5);
+    expect(k[s.awal].ruUsd).toBeGreaterThan(-5);
+  });
+
+  it("investor dengan 1 setoran di hari pertama mulai dari awal = 0", () => {
+    const { c } = konteks(dataAwal());
+    const s = seriRentang(c, "Sejak Setor", "faiz");
+    expect(s.awal).toBe(0);
+    expect(s.titik[0].waktu.slice(0, 10)).toBe("2026-10-16");
+  });
+
+  it("pool: mulai dari setoran terakhir di pool (13 Nov 2026)", () => {
+    const { c } = konteks(dataAwal());
+    const s = seriRentang(c, "Sejak Setor", null);
+    expect(s.awal).toBe(1);
+    expect(s.titik[s.awal].waktu.slice(0, 10)).toBe("2026-11-13");
+  });
+});

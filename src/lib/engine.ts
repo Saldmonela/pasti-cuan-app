@@ -571,8 +571,22 @@ export interface Seri {
 }
 
 export function tanggalAwalRentang(terakhir: Tanggal, r: Rentang): Tanggal | null {
-  if (r === "Semua" || r === "24J") return null;
+  if (r === "Semua" || r === "24J" || r === "Sejak Setor") return null;
   return tambahHari(terakhir, r === "7H" ? -6 : -29);
+}
+
+function setoranTerakhir(permintaan: Permintaan[], anggotaId: string | null, jam: string): { ms: number; tanggal: Tanggal } | null {
+  let akhir: { ms: number; tanggal: Tanggal } | null = null;
+  for (const p of permintaan) {
+    if (p.status !== "selesai" || p.jenis !== "setor") continue;
+    if (anggotaId && p.anggotaId !== anggotaId) continue;
+    if (!p.tanggalEfektif && !isOnchainTx(p)) continue;
+    const t = waktuEfektifMs(p, jam);
+    if (!akhir || t > akhir.ms) {
+      akhir = { ms: t, tanggal: p.tanggalEfektif ?? isoWib(t).slice(0, 10) };
+    }
+  }
+  return akhir;
 }
 
 export interface KonteksSeri {
@@ -658,18 +672,24 @@ function titikUjung(c: KonteksSeri, ti: TitikNilai, sebelum: TitikSeri, anggotaI
 }
 
 /** Interval tiap rentang (BR-21): target 150-365 titik, sama untuk USD dan SOL. */
-const INTERVAL: Record<Exclude<Rentang, "Semua">, { panjang: number; langkah: number }> = {
+const INTERVAL: Record<Exclude<Rentang, "Semua" | "Sejak Setor">, { panjang: number; langkah: number }> = {
   "24J": { panjang: 24 * 60 * MENIT, langkah: 5 * MENIT },
   "7H": { panjang: 7 * 24 * 60 * MENIT, langkah: 30 * MENIT },
   "30H": { panjang: 30 * 24 * 60 * MENIT, langkah: 120 * MENIT },
 };
 /** Pilihan interval rentang Semua: yang terkecil dengan jumlah titik <= 365. */
 const INTERVAL_SEMUA = [2, 4, 6, 12, 24].map((j) => j * 60 * MENIT);
+/** Pilihan interval rentang Sejak Setor: termasuk 30m/1j untuk jarak hari yang lebih singkat. */
+const INTERVAL_SETOR = [30, 60, 120, 240, 360, 720, 1440].map((m) => m * MENIT);
 export const MAKS_TITIK = 365;
 const OFFSET_WIB = 7 * 60 * MENIT;
 
 export function intervalSemua(panjang: number): number {
   return INTERVAL_SEMUA.find((l) => Math.ceil(panjang / l) <= MAKS_TITIK) ?? INTERVAL_SEMUA[INTERVAL_SEMUA.length - 1];
+}
+
+function intervalSetor(panjang: number): number {
+  return INTERVAL_SETOR.find((l) => Math.ceil(panjang / l) <= MAKS_TITIK) ?? INTERVAL_SETOR[INTERVAL_SETOR.length - 1];
 }
 
 /** Seri harian (snapshot) + 1 titik nilai di ujung: dipakai bila titik nilai belum mencakup 90% rentang. */
@@ -682,7 +702,8 @@ function seriHarianDenganUjung(c: KonteksSeri, r: Rentang, anggotaId: string | n
     if (u) titik.push(u);
   }
   if (!titik.length) return { jenis, titik, awal: 0 };
-  const tgl = tanggalAwalRentang(titik[titik.length - 1].waktu.slice(0, 10), r);
+  const tglSetor = r === "Sejak Setor" ? setoranTerakhir(c.permintaan, anggotaId, c.set.jamSnapshot)?.tanggal : null;
+  const tgl = tglSetor ?? tanggalAwalRentang(titik[titik.length - 1].waktu.slice(0, 10), r);
   const batas = tgl ? ms(tgl) : -Infinity;
   const awal = Math.max(0, titik.findIndex((p) => p.ms >= batas));
   return { jenis, titik, awal };
@@ -690,28 +711,34 @@ function seriHarianDenganUjung(c: KonteksSeri, r: Rentang, anggotaId: string | n
 
 /**
  * Seri grafik untuk satu rentang (BR-21). Semua rentang memakai titik nilai (asli, atau estimasi per jam untuk
- * riwayat sebelum pembacaan otomatis, BR-24) dengan interval: 24J 5 menit, 7H 30 menit, 30H 2 jam, Semua otomatis
- * (<= 365 titik). Tiap kelompok waktu memakai titik terakhirnya, bukan rata-rata. Bila titik nilai belum mencakup
- * 90% rentang, seluruh rentang memakai snapshot harian + 1 titik nilai di ujung, supaya kerapatan tidak bercampur.
+ * riwayat sebelum pembacaan otomatis, BR-24) dengan interval: 24J 5 menit, 7H 30 menit, 30H 2 jam, Sejak Setor &
+ * Semua otomatis (<= 365 titik). Tiap kelompok waktu memakai titik terakhirnya, bukan rata-rata. Bila titik nilai
+ * belum mencakup 90% rentang, seluruh rentang memakai snapshot harian + 1 titik nilai di ujung, supaya kerapatan
+ * tidak bercampur.
  */
 export function seriRentang(c: KonteksSeri, r: Rentang, anggotaId: string | null = null): Seri {
   const jenis = anggotaId ? "saya" : "pool";
   const harian = titikHarian(c, anggotaId).filter((p) => p.ms <= c.sekarang);
   const tersedia = c.titik.filter((t) => t.ms <= c.sekarang);
   const terakhir = tersedia[tersedia.length - 1];
-  const semua = r === "Semua";
+  const awalData = Math.min(harian[0]?.ms ?? Infinity, tersedia[0]?.ms ?? Infinity);
+  const setor = r === "Sejak Setor" ? setoranTerakhir(c.permintaan, anggotaId, c.set.jamSnapshot) : null;
+  const semua = r === "Semua" || (r === "Sejak Setor" && (!setor || setor.ms <= awalData));
 
   let panjang: number;
   let langkah: number;
   let mulai: number;
   if (semua) {
-    const awalData = Math.min(harian[0]?.ms ?? Infinity, tersedia[0]?.ms ?? Infinity);
     if (awalData === Infinity) return { jenis, titik: [], awal: 0 };
     panjang = Math.max(c.sekarang - awalData, MENIT);
     langkah = intervalSemua(panjang);
     mulai = awalData - 1;
+  } else if (r === "Sejak Setor" && setor) {
+    mulai = setor.ms - 1;
+    panjang = Math.max(c.sekarang - setor.ms, MENIT);
+    langkah = intervalSetor(panjang);
   } else {
-    ({ panjang, langkah } = INTERVAL[r]);
+    ({ panjang, langkah } = INTERVAL[r as Exclude<Rentang, "Semua" | "Sejak Setor">]);
     // awal rentang dibulatkan ke batas kelompok: jumlah kelompok tidak melebihi target + 1 pembanding
     mulai = Math.ceil((c.sekarang - panjang + OFFSET_WIB) / langkah) * langkah - OFFSET_WIB;
   }
