@@ -46,8 +46,8 @@ Keberhasilan terukur ketika seluruh anggota dapat membuka aplikasi dari HP, memb
 
 ## Evidence on Hand
 
-- Riwayat snapshot & setoran awal sejak 16 Okt 2026 di `Tracker_LP_v3.xlsx` dan `Laporan Harian.xlsx`, PRD di `docs/prd/prd-dashboard-porsi-dana-lp.md`, serta skema database + pembacaan wallet live di Supabase.
-- Data antara 15–16 Nov 2026 sebelum cron aktif memakai titik estimasi per jam berbasis harga pasar CoinGecko (yang secara terbuka diberi penanda "estimasi per jam" di antarmuka), bukan pembacaan wallet per menit.
+- Rekonstruksi riwayat onchain penuh (16 Okt – 16 Nov 2026) dari 2.549 transaksi Helius pada wallet pool (checkpoint penutupan posisi Meteora, transfer masuk Binance, dan penarikan penuh Rezki 731,51 USDC) dipadukan harga historis SOL/DOGE/PEPE CoinGecko, plus pembacaan wallet otomatis tiap menit sejak 17 Nov 2026 pukul 02.40 WIB.
+- File Excel historis awal (`Tracker_LP_v3.xlsx` dan `Laporan Harian.xlsx`) serta PRD (`docs/prd/prd-dashboard-porsi-dana-lp.md`) tetap tersimpan sebagai rujukan awal, dengan catatan bahwa titik per jam sebelum 17 Nov 2026 di antara penutupan posisi tetap diberi penanda "estimasi per jam" di antarmuka.
 
 ## Product Principles
 
