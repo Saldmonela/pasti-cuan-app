@@ -647,4 +647,31 @@ describe("rentang Setoran Terakhir", () => {
     expect(k.at(-1)!.persenUsd).not.toBe(0);
     expect(k.at(-1)!.ruUsd).toBeLessThan(20);
   });
+
+  it("grafik Pool Semua tidak menghitung ganda setoran snapshot yang dicocokkan ke arus onchain", () => {
+    const d = dataAwal();
+    const snaps = d.snapshots.filter((s) => s.tanggal === "2026-10-16");
+    const perms = d.permintaan.filter((p) => p.tanggalEfektif === "2026-10-16" && p.status === "selesai");
+    const awalUsd = perms.reduce((sum, p) => sum + (p.jumlahFinalUsd ?? p.jumlahUsd), 0);
+    const arus: ArusOnchain[] = [
+      {
+        id: "arus_awal_1", signature: "sig_awal_1", urutan: 0, waktu: "2026-10-16T20:05:00+07:00",
+        arah: "masuk", token: "So11111111111111111111111111111111111111112", simbol: "SOL", jumlah: 3.7765, nilaiUsd: awalUsd,
+        alamatLawan: "bin", status: "dicocokkan", permintaanId: perms[0].id,
+      },
+    ];
+    const titik: TitikNilai[] = [
+      { id: 1, ms: ms("2026-10-16T20:00:00+07:00"), nilaiUsd: awalUsd, saldoSol: 3.7765, harga: 105.54, estimasi: true },
+      { id: 2, ms: ms("2026-10-22T08:00:00+07:00"), nilaiUsd: 450, saldoSol: 4.1, harga: 109.75, estimasi: true },
+    ];
+    const h = hitungPool(d.anggota, snaps, perms, d.pengaturan, arus, titik);
+    const c = { sekarang: ms("2026-10-22T09:00:00+07:00"), anggota: d.anggota, snaps, permintaan: perms, arus, titik, h, set: d.pengaturan };
+    const s = seriRentang(c, "Semua", null);
+    const k = kumulatif(s);
+    expect(s.titik.length).toBe(2);
+    expect(s.titik[0].waktu).toBe("2026-10-16T20:00:00+07:00");
+    expect(s.titik[0].arusUsd).toBeCloseTo(awalUsd, 2);
+    expect(s.titik[1].arusUsd).toBe(0);
+    near(k.at(-1)!.ruUsd, 450 - awalUsd, 0.02);
+  });
 });

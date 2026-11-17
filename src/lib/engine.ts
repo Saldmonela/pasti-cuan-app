@@ -652,7 +652,13 @@ function nilaiDi(c: KonteksSeri, ti: TitikNilai, anggotaId: string | null): { us
 }
 
 /** Arus onchain di antara dua titik: daftar transaksi untuk chip (BR-23) dan arus bersihnya. */
-function arusDiAntara(c: KonteksSeri, dari: number, sampai: number, anggotaId: string | null): { transaksi: TransaksiTitik[]; bersih: number } {
+function arusDiAntara(
+  c: KonteksSeri,
+  dari: number,
+  sampai: number,
+  anggotaId: string | null,
+  skipPermintaan?: Set<string>,
+): { transaksi: TransaksiTitik[]; bersih: number } {
   const pemilik = (a: ArusOnchain) => c.permintaan.find((p) => p.id === a.permintaanId)?.anggotaId;
   const nama = (id?: string) => c.anggota.find((x) => x.id === id)?.nama ?? "Belum dicocokkan";
   const kelompok = new Map<string, TransaksiTitik>();
@@ -660,6 +666,7 @@ function arusDiAntara(c: KonteksSeri, dari: number, sampai: number, anggotaId: s
   for (const a of c.arus) {
     const t = ms(a.waktu);
     if (t <= dari || t > sampai || !dinetralkan(a)) continue;
+    if (a.permintaanId && skipPermintaan?.has(a.permintaanId)) continue;
     const id = a.status === "dicocokkan" ? pemilik(a) : undefined;
     if (anggotaId && id !== anggotaId) continue;
     const jenis: Jenis = a.arah === "masuk" ? "setor" : "tarik";
@@ -676,8 +683,14 @@ function arusDiAntara(c: KonteksSeri, dari: number, sampai: number, anggotaId: s
 function titikUjung(c: KonteksSeri, ti: TitikNilai, sebelum: TitikSeri, anggotaId: string | null): TitikSeri | null {
   const v = nilaiDi(c, ti, anggotaId);
   if (!v) return null;
+  const akhirTgl = sebelum.waktu.slice(0, 10);
+  const sudah = new Set(
+    c.permintaan
+      .filter((p) => p.status === "selesai" && !isOnchainTx(p) && !!p.tanggalEfektif && p.tanggalEfektif <= akhirTgl)
+      .map((p) => p.id),
+  );
   // pool: isi wallet sudah turun/naik karena transfer sejak snapshot terakhir, jadi transfernya diakui sebagai arus
-  const a = anggotaId ? { transaksi: [], bersih: 0 } : arusDiAntara(c, sebelum.ms, ti.ms, null);
+  const a = anggotaId ? { transaksi: [], bersih: 0 } : arusDiAntara(c, sebelum.ms, ti.ms, null, sudah);
   return { ms: ti.ms, waktu: isoWib(ti.ms), harian: false, estimasi: !!ti.estimasi, usd: v.usd, sol: v.sol, harga: ti.harga, nav: v.nav, arusUsd: a.bersih, transaksi: a.transaksi };
 }
 
@@ -769,6 +782,7 @@ export function seriRentang(c: KonteksSeri, r: Rentang, anggotaId: string | null
   }
 
   const sumber = new Map(c.snaps.map((s) => [s.tanggal, s.sumber]));
+  const sudahArus = new Set<string>();
   const out: TitikSeri[] = [];
   let snapSebelum: Tanggal | null = null;
   let tSebelum = -Infinity;
@@ -786,10 +800,15 @@ export function seriRentang(c: KonteksSeri, r: Rentang, anggotaId: string | null
         arusUsd = hs.arusUsd;
         const efektif = !ti.estimasi && sumber.get(v.snapshot) !== "impor";
         transaksi.push(...hs.transaksi.map((x) => ({ ...x, nama: efektif ? `${x.nama}, efektif` : x.nama })));
+        if (!anggotaId) {
+          for (const p of c.permintaan) {
+            if (p.status === "selesai" && !isOnchainTx(p) && p.tanggalEfektif === v.snapshot) sudahArus.add(p.id);
+          }
+        }
       }
     }
     if (tSebelum > -Infinity) {
-      const a = arusDiAntara(c, tSebelum, ti.ms, anggotaId);
+      const a = arusDiAntara(c, tSebelum, ti.ms, anggotaId, sudahArus);
       // pool: isi wallet berubah saat transfer terjadi, jadi transfer onchain diakui sebagai arus di titik itu
       if (!anggotaId) arusUsd += a.bersih;
       transaksi.push(...a.transaksi);
