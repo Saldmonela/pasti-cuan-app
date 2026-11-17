@@ -231,19 +231,27 @@ export function hitungPool(
 
   type Event =
     | { kind: "snap"; tMs: number; snap: Snapshot }
-    | { kind: "tx"; tMs: number; tx: Permintaan; titik: TitikNilai };
+    | { kind: "tx"; tMs: number; txs: Permintaan[]; titik: TitikNilai };
 
   const events: Event[] = snaps.map((snap) => ({
     kind: "snap",
     tMs: msSnapshot(snap.tanggal, set.jamSnapshot),
     snap,
   }));
+  const txGroups = new Map<string, { tMs: number; txs: Permintaan[]; titik: TitikNilai }>();
   for (const t of tx) {
     if (!isOnchainTx(t)) continue;
     const ti = titikById.get(t.titikNilaiId!);
     if (ti) {
-      events.push({ kind: "tx", tMs: ms(t.waktuEfektif!), tx: t, titik: ti });
+      const tMs = ms(t.waktuEfektif!);
+      const key = `${tMs}|${ti.id}`;
+      const existing = txGroups.get(key);
+      if (existing) existing.txs.push(t);
+      else txGroups.set(key, { tMs, txs: [t], titik: ti });
     }
+  }
+  for (const g of txGroups.values()) {
+    events.push({ kind: "tx", ...g });
   }
   events.sort((a, b) => {
     if (a.tMs !== b.tMs) return a.tMs - b.tMs;
@@ -325,14 +333,14 @@ export function hitungPool(
       lastEventMs = ev.tMs;
     } else {
       // Transaksi onchain dinilai pada waktu transfer memakai titik nilai referensi (BR-18, update 17 Nov 2026)
-      const t = ev.tx;
       const ti = ev.titik;
+      const batchIds = new Set(ev.txs.map((x) => x.id));
       let netral = NOL;
       for (const a of arus) {
         const ta = ms(a.waktu);
         if (ta <= lastEventMs || ta > ti.ms) continue;
         // Arus milik transaksi ini sendiri baru terpotong dari isi wallet bila titik referensi diambil SESUDAH waktu blok transfer.
-        if (a.permintaanId === t.id && ti.ms <= ta) continue;
+        if (a.permintaanId && batchIds.has(a.permintaanId) && ti.ms <= ta) continue;
         const belumSelesai = a.status === "belum" || (a.status === "dicocokkan" && !settledIds.has(a.permintaanId ?? ""));
         if (!belumSelesai) continue;
         netral = netral.add(a.arah === "keluar" ? a.nilaiUsd : -a.nilaiUsd);
@@ -343,8 +351,10 @@ export function hitungPool(
       const tglTx = isoWib(ev.tMs).slice(0, 10);
       const arusAnggota: Record<string, Decimal> = {};
       const txHari: TransaksiHari[] = [];
-      terapkanTransaksi(t, navTx, hargaSol, tglTx, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, arusAnggota, txHari);
-      settledIds.add(t.id);
+      for (const t of ev.txs) {
+        terapkanTransaksi(t, navTx, hargaSol, tglTx, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, arusAnggota, txHari);
+        settledIds.add(t.id);
+      }
       hargaUnit = navTx;
       nilaiPool = totalRef.val.mul(navTx);
       saldoSol = nilaiPool.div(hargaSol);
@@ -791,6 +801,16 @@ export function seriRentang(c: KonteksSeri, r: Rentang, anggotaId: string | null
           if (tp > tSebelum && tp <= ti.ms) {
             arusUsd += p.jenis === "setor" ? p.jumlahFinalUsd! : -p.jumlahFinalUsd!;
           }
+        }
+      }
+    } else if (semua && anggotaId) {
+      // Titik pertama investor yang baru masuk lewat transaksi onchain (sesudah hari ke-1): setoran awal masuk ke arus agar % tidak 0
+      const namaAnggota = c.anggota.find((x) => x.id === anggotaId)?.nama ?? anggotaId;
+      for (const p of c.permintaan) {
+        if (p.status !== "selesai" || p.anggotaId !== anggotaId || !isOnchainTx(p)) continue;
+        if (ms(p.waktuEfektif!) <= ti.ms) {
+          arusUsd += p.jenis === "setor" ? p.jumlahFinalUsd! : -p.jumlahFinalUsd!;
+          transaksi.push({ nama: namaAnggota, jenis: p.jenis, jumlahUsd: p.jumlahFinalUsd! });
         }
       }
     }

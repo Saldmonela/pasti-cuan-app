@@ -601,4 +601,50 @@ describe("rentang Setoran Terakhir", () => {
     expect(opsiRentang(d.permintaan, "salman")).toEqual(["24J", "7H", "Setoran Terakhir", "Semua"]);
     expect(opsiRentang(d.permintaan, null)).toEqual(["24J", "7H", "Setoran Terakhir", "Semua"]);
   });
+
+  it("dua setoran onchain bersamaan pada titik nilai yang sama membeli di NAV yang sama", () => {
+    const d = dataAwal();
+    const snaps = d.snapshots.filter((s) => s.tanggal <= "2026-10-26");
+    const tBatch = "2026-10-26T22:00:00+07:00";
+    const titikRef: TitikNilai = { id: 777, ms: ms("2026-10-26T21:59:00+07:00"), nilaiUsd: 875.54, saldoSol: 8.66, harga: 101.1 };
+    const reqSalman: Permintaan = {
+      id: "batch_s", anggotaId: "salman", jenis: "setor", jumlahUsd: 200, status: "selesai",
+      waktuEfektif: tBatch, titikNilaiId: 777, jumlahFinalUsd: 200, sumber: "app", dibuatPada: tBatch,
+    };
+    const reqHafiz: Permintaan = {
+      id: "batch_h", anggotaId: "hafiz", jenis: "setor", jumlahUsd: 100, status: "selesai",
+      waktuEfektif: tBatch, titikNilaiId: 777, jumlahFinalUsd: 100, sumber: "app", dibuatPada: tBatch,
+    };
+    const perms = d.permintaan.filter((p) => p.status === "selesai" && (p.tanggalEfektif ?? "") <= "2026-10-26");
+    const h = hitungPool(d.anggota, snaps, [...perms, reqSalman, reqHafiz], d.pengaturan, [], [titikRef]);
+    expect(h.cek.lolos).toBe(true);
+    const navRef = 875.54 / h.keadaan["2026-10-26"].total;
+    near(h.posisi.find((x) => x.id === "hafiz")!.unit, 100 / navRef, 0.001);
+    near(h.posisi.find((x) => x.id === "hafiz")!.netUsd, 100, 0.01);
+  });
+
+  it("grafik Semua investor yang baru bergabung lewat setoran onchain tidak 0% datar", () => {
+    const d = dataAwal();
+    const tMasuk = "2026-10-27T22:48:00+07:00";
+    const titikRef: TitikNilai = { id: 888, ms: ms("2026-10-27T22:47:00+07:00"), nilaiUsd: 983.06, saldoSol: 9.75, harga: 100.8 };
+    const snaps = d.snapshots.filter((s) => s.tanggal <= "2026-10-28");
+    const perms = d.permintaan.filter((p) => p.status === "selesai" && p.id !== "t06" && p.id !== "t07");
+    const reqHafiz: Permintaan = {
+      id: "hafiz_onchain", anggotaId: "hafiz", jenis: "setor", jumlahUsd: 100, status: "selesai",
+      waktuEfektif: tMasuk, titikNilaiId: 888, jumlahFinalUsd: 100, sumber: "app", dibuatPada: tMasuk,
+    };
+    const dBaru = { ...d, snapshots: snaps, permintaan: [...perms, reqHafiz] };
+    const titik = [
+      titikRef,
+      { id: 889, ms: ms("2026-10-28T00:00:00+07:00"), nilaiUsd: 1120, saldoSol: 11.1, harga: 100.9, estimasi: true },
+      { id: 890, ms: ms("2026-10-28T12:00:00+07:00"), nilaiUsd: 1200, saldoSol: 11.5, harga: 104.3, estimasi: false },
+    ];
+    const h = hitungPool(dBaru.anggota, dBaru.snapshots, dBaru.permintaan, dBaru.pengaturan, [], titik);
+    const c = { sekarang: ms("2026-10-28T13:00:00+07:00"), anggota: dBaru.anggota, snaps: dBaru.snapshots, permintaan: dBaru.permintaan, arus: [], titik, h, set: dBaru.pengaturan };
+    const s = seriRentang(c, "Semua", "hafiz");
+    const k = kumulatif(s);
+    expect(s.titik[0].arusUsd).toBe(100);
+    expect(k.at(-1)!.persenUsd).not.toBe(0);
+    expect(k.at(-1)!.ruUsd).toBeLessThan(20);
+  });
 });
