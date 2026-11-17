@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { usd } from "@/lib/format";
+import { isSolanaAddress, usd } from "@/lib/format";
 import { ApiError, jsonError, requireMember } from "@/lib/server/auth";
 import { loadPoolContext } from "@/lib/server/pool";
 import type { Jenis } from "@/lib/types";
@@ -65,6 +65,15 @@ export async function POST(request: Request) {
         throw new ApiError(422, "ATURAN_BISNIS", `Maksimal yang bisa kamu tarik hari ini ${usd(pos?.netUsd ?? 0)}.`, {
           jumlah: `Maksimal ${usd(pos?.netUsd ?? 0)}`,
         });
+      }
+      const tujuan = body.alamat_wallet_tujuan?.trim();
+      if (tujuan && !isSolanaAddress(tujuan)) {
+        throw new ApiError(
+          400,
+          "VALIDASI",
+          "Alamat wallet Solana tujuan harus 32–44 karakter (base58).",
+          { alamat: "Alamat wallet Solana tidak valid." },
+        );
       }
     }
 

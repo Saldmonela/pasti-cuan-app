@@ -120,3 +120,14 @@ export function tambahHari(iso: string, n: number): string {
   const t = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + n));
   return t.toISOString().slice(0, 10);
 }
+
+/** Validasi format alamat wallet Solana (base58, 32-44 karakter). */
+export function isSolanaAddress(alamat: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(alamat.trim());
+}
+
+/** Ringkas alamat wallet panjang untuk ditampilkan di label/chip ringkas. */
+export function ringkasAlamat(alamat: string): string {
+  const s = alamat.trim();
+  return s.length <= 12 ? s : `${s.slice(0, 6)}…${s.slice(-4)}`;
+}

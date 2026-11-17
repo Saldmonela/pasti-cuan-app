@@ -83,6 +83,11 @@ export default function Beranda() {
                 Tarik
               </Link>
             </div>
+            {pos.unit <= 1e-9 && (
+              <p className="note" style={{ marginTop: 12 }}>
+                Seluruh dana kamu sudah ditarik. Buka rentang <b>Semua</b> untuk melihat total riwayat untung/rugi, atau ajukan Setor untuk masuk lagi.
+              </p>
+            )}
             {sayaMenunggu.length > 0 && (
               <Link href="/permintaan" className="cap" style={{ margin: "14px 0 0", textDecoration: "none" }}>
                 <span className="chip menunggu">Menunggu</span>

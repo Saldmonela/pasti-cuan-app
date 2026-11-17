@@ -1,19 +1,23 @@
 "use client";
 // Kelola anggota (US-07): tambah anggota dengan email Google, nonaktifkan anggota yang sudah tarik semua.
 import { useState, type SubmitEvent } from "react";
-import { BackBar, describedBy, Field, KhususPengelola, StatusBanners } from "@/components/ui";
+import { BackBar, describedBy, Field, KhususPengelola, Sheet, StatusBanners } from "@/components/ui";
 import { usd } from "@/lib/format";
 import { useStore } from "@/lib/store";
-import type { Peran } from "@/lib/types";
+import type { Anggota as AnggotaType, Peran } from "@/lib/types";
 
 export default function Anggota() {
-  const { saya, data, hasil, tambahAnggota, setAktif, tampilkan, offline } = useStore();
+  const { saya, data, hasil, tambahAnggota, setAktif, ubahWalletAnggota, tampilkan, offline } = useStore();
   const [nm, setNm] = useState("");
   const [em, setEm] = useState("");
   const [peran, setPeran] = useState<Peran>("investor");
   const [alamat, setAlamat] = useState("");
   const [err, setErr] = useState<Record<string, string>>({});
   const [errBaris, setErrBaris] = useState<Record<string, string>>({});
+  const [editWallet, setEditWallet] = useState<AnggotaType | null>(null);
+  const [walletEditTeks, setWalletEditTeks] = useState("");
+  const [walletEditErr, setWalletEditErr] = useState("");
+  const [simpanWallet, setSimpanWallet] = useState(false);
   if (!saya) return null;
   if (saya.peran !== "pengelola") return (<><BackBar judul="Anggota" ke="/kelola" /><main><KhususPengelola /></main></>);
 
@@ -59,12 +63,25 @@ export default function Anggota() {
                       </div>
                     ) : null}
                     {errBaris[a.id] && <p className="ferr" role="alert" style={{ marginTop: 6 }}>{errBaris[a.id]}</p>}
-                    {a.id !== saya.id && (
-                      <div className="acts" style={{ marginTop: 6 }}>
+                    <div className="acts" style={{ marginTop: 4, gap: 4 }}>
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        style={{ marginLeft: -8, padding: "0 8px", height: 36, fontSize: 13 }}
+                        disabled={offline}
+                        onClick={() => {
+                          setEditWallet(a);
+                          setWalletEditTeks(a.alamatWallet?.join(", ") ?? "");
+                          setWalletEditErr("");
+                        }}
+                      >
+                        Ubah wallet
+                      </button>
+                      {a.id !== saya.id && (
                         <button
                           type="button"
                           className="btn ghost sm"
-                          style={{ marginLeft: -12 }}
+                          style={{ padding: "0 8px", height: 36, fontSize: 13 }}
                           disabled={offline}
                           onClick={async () => {
                             const h = await setAktif(a.id, !a.aktif);
@@ -74,8 +91,8 @@ export default function Anggota() {
                         >
                           {a.aktif ? "Nonaktifkan" : "Aktifkan"}
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                   <div className="v">{usd(p.netUsd)}</div>
                 </li>
@@ -131,6 +148,58 @@ export default function Anggota() {
           </fieldset>
         </form>
       </main>
+
+      <Sheet buka={!!editWallet} onTutup={() => setEditWallet(null)} judul={editWallet ? `Wallet ${editWallet.nama}` : "Ubah wallet"}>
+        <form
+          className="form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!editWallet || simpanWallet) return;
+            setSimpanWallet(true);
+            const list = walletEditTeks.split(/[\s,]+/).filter(Boolean);
+            const h = await ubahWalletAnggota(editWallet.id, list);
+            setSimpanWallet(false);
+            if (!h.ok) {
+              setWalletEditErr(h.pesan);
+              return;
+            }
+            tampilkan(`Alamat wallet ${editWallet.nama} diperbarui.`);
+            setEditWallet(null);
+          }}
+        >
+          <Field
+            id="edit-wallet"
+            label="Alamat wallet Solana"
+            opsional
+            error={walletEditErr}
+            hint="Pisahkan dengan koma atau spasi bila lebih dari satu. Kosongkan untuk menghapus."
+          >
+            <div className={`inp${walletEditErr ? " err" : ""}`}>
+              <textarea
+                id="edit-wallet"
+                rows={3}
+                autoComplete="off"
+                spellCheck={false}
+                value={walletEditTeks}
+                onChange={(e) => {
+                  setWalletEditTeks(e.target.value);
+                  if (walletEditErr) setWalletEditErr("");
+                }}
+                aria-invalid={!!walletEditErr}
+                aria-describedby={describedBy("edit-wallet", walletEditErr, true)}
+              />
+            </div>
+          </Field>
+          <div className="btn-row">
+            <button type="button" className="btn ton" onClick={() => setEditWallet(null)}>
+              Batal
+            </button>
+            <button type="submit" className="btn pri" disabled={simpanWallet || offline}>
+              {simpanWallet ? "Menyimpan…" : "Simpan"}
+            </button>
+          </div>
+        </form>
+      </Sheet>
     </>
   );
 }

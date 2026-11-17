@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSolanaAddress } from "@/lib/format";
 import { ApiError, jsonError, requireManager } from "@/lib/server/auth";
 import { loadPoolContext } from "@/lib/server/pool";
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new ApiError(400, "VALIDASI", "Tulis email Google yang valid.", { email: "Email tidak valid." });
     }
-    if (alamat.some((x) => !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(x))) {
+    if (alamat.some((x) => !isSolanaAddress(x))) {
       throw new ApiError(
         400,
         "VALIDASI",

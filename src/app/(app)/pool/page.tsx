@@ -67,8 +67,7 @@ export default function Pool() {
             adaSelisih && info ? (
               <p className="note info-isi" id="info-selisih">
                 Isi wallet sekarang {usd(isi.usd)}. {usd(Math.abs(belumDiproses))} sudah {belumDiproses > 0 ? "keluar dari" : "masuk ke"} wallet tapi belum
-                diproses ke unit, jadi nilai tiap orang masih dihitung seolah-olah dana itu {belumDiproses > 0 ? "ada" : "belum ada"}. Akan beres di snapshot
-                berikutnya.
+                dicocokkan ke permintaan, jadi nilai tiap orang masih dihitung seolah-olah dana itu {belumDiproses > 0 ? "ada" : "belum ada"}. Akan beres setelah transfer dicocokkan.
               </p>
             ) : undefined
           }

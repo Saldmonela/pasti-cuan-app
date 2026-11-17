@@ -1,6 +1,7 @@
 // Golden test dan skenario dari PRD Section 3.3 "Rencana Uji". Toleransi +/- $0,01.
 import { describe, expect, it } from "vitest";
 import { hitungPool, kumulatif, seriHarian, seriRentang, simulasiTarik, terapkanLive, untungRugi } from "./engine";
+import { isSolanaAddress, ringkasAlamat } from "./format";
 import { opsiRentang } from "./view";
 import {
   ALAMAT_POOL,
@@ -673,5 +674,12 @@ describe("rentang Setoran Terakhir", () => {
     expect(s.titik[0].arusUsd).toBeCloseTo(awalUsd, 2);
     expect(s.titik[1].arusUsd).toBe(0);
     near(k.at(-1)!.ruUsd, 450 - awalUsd, 0.02);
+  });
+
+  it("memvalidasi dan meringkas alamat wallet Solana dengan benar", () => {
+    expect(isSolanaAddress(ALAMAT_POOL)).toBe(true);
+    expect(isSolanaAddress("0x1234567890abcdef1234567890abcdef12345678")).toBe(false);
+    expect(isSolanaAddress("terlalu_pendek")).toBe(false);
+    expect(ringkasAlamat(ALAMAT_POOL)).toBe(`${ALAMAT_POOL.slice(0, 6)}…${ALAMAT_POOL.slice(-4)}`);
   });
 });

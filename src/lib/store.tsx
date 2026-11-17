@@ -3,7 +3,7 @@
 // dan fallback ke data contoh localStorage khusus saat build preview statis (`NEXT_PUBLIC_PROTOTYPE_MODE=1`).
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { hitungPool, seriRentang, terapkanLive, type HasilPool, type Seri } from "./engine";
-import { selisihHari, tambahHari, tanggal, usd, waktu, wibIso } from "./format";
+import { isSolanaAddress, selisihHari, tambahHari, tanggal, usd, waktu, wibIso } from "./format";
 import { isoWib, MENIT, ms, msSnapshot, MULAI_BACA, semuaTitik, titikEstimasi, type TitikNilai } from "./onchain";
 import { dataAwal, snapshotOtomatis, WAKTU_AWAL } from "./seed";
 import { createSupabaseBrowserClient } from "./supabase/client";
@@ -118,6 +118,7 @@ interface Ctx {
   tambahAnggota: (a: { nama: string; email: string; peran: Peran; alamatWallet?: string[] }) => Promise<Hasil>;
   setAktif: (id: string, aktif: boolean) => Promise<Hasil>;
   ubahPeran: (id: string, peran: Peran) => Promise<Hasil>;
+  ubahWalletAnggota: (id: string, alamatWallet: string[]) => Promise<Hasil>;
   ubahPengaturan: (p: Partial<Pengaturan>) => Promise<Hasil>;
   batalkanImpor: () => Promise<Hasil>;
   impor: (snapshots: Snapshot[], transaksi: Permintaan[], estimasi: boolean) => Promise<Hasil>;
@@ -862,7 +863,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return { ok: false, pesan: "Tulis email Google yang valid.", field: "email" };
       if (data.anggota.some((x) => x.email === em)) return { ok: false, pesan: "Email ini sudah dipakai anggota lain.", field: "email" };
       const alamat = (a.alamatWallet ?? []).map((x) => x.trim()).filter(Boolean);
-      if (alamat.some((x) => !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(x))) {
+      if (alamat.some((x) => !isSolanaAddress(x))) {
         return { ok: false, pesan: "Alamat wallet Solana harus 32-44 karakter (huruf dan angka base58).", field: "alamat" };
       }
       const baru: Anggota = { id: idBaru("a"), nama: nm, email: em, peran: a.peran, aktif: true, alamatWallet: alamat.length ? alamat : undefined, dibuatPada: kini() };
@@ -904,6 +905,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         aksi: "update",
         ringkasan: `Mengubah peran ${nama(id)} menjadi ${peran}.`,
       });
+      return { ok: true };
+    },
+
+    async ubahWalletAnggota(id, alamatWallet) {
+      if (offline) return offlineErr;
+      const cleaned = [...new Set(alamatWallet.map((x) => x.trim()).filter(Boolean))];
+      if (cleaned.some((x) => !isSolanaAddress(x))) {
+        return { ok: false, pesan: "Alamat wallet Solana harus 32–44 karakter (huruf dan angka base58).", field: "alamat" };
+      }
+      if (!IS_PROTOTYPE) {
+        const res = await apiJson(`/api/anggota/${id}`, "PATCH", { alamat_wallet: cleaned });
+        if (!res.ok) return res;
+        await refreshLive();
+        return { ok: true };
+      }
+      ubah(
+        (d) => ({
+          ...d,
+          anggota: d.anggota.map((x) => (x.id === id ? { ...x, alamatWallet: cleaned.length ? cleaned : undefined } : x)),
+        }),
+        { tabel: "anggota", aksi: "update", ringkasan: `Memperbarui alamat wallet ${nama(id)}.` },
+      );
       return { ok: true };
     },
 

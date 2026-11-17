@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { IconArrowsExchange, IconChartPie, IconDots, IconHome, IconLayoutDashboard } from "@tabler/icons-react";
 import { useStore } from "@/lib/store";
-import { catatKunjungan, Toast } from "./ui";
+import { catatKunjungan, GagalMuat, Memuat, Toast } from "./ui";
 import ProtoPanel from "./ProtoPanel";
 
 // Alur uang yang butuh fokus: tanpa navbar, cukup tombol kembali (DESIGN.md, Navigasi).
@@ -14,7 +14,7 @@ const INDUK: Record<string, string> = { "/log": "/lainnya" };
 
 /** Kerangka aplikasi: kolom satu (maks. 480px) di atas kanvas sage, navigasi pil melayang. */
 export default function Shell({ children }: { children: ReactNode }) {
-  const { siap, saya, menunggu, arusBelumCount } = useStore();
+  const { siap, saya, menunggu, arusBelumCount, skenario } = useStore();
   // Badge Kelola: permintaan menunggu + arus onchain yang belum dicocokkan (PRD 3.2, Navigasi)
   const tugas = menunggu.length + arusBelumCount;
   // Build preview memakai trailingSlash ("/pool/"), dev tidak ("/pool"): samakan dulu.
@@ -23,8 +23,8 @@ export default function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (siap && !saya) router.replace("/masuk");
-  }, [siap, saya, router]);
+    if (siap && !saya && skenario !== "gagal") router.replace("/masuk");
+  }, [siap, saya, skenario, router]);
 
   // Hitung perpindahan halaman di dalam app, supaya tombol kembali tahu ada halaman sebelumnya.
   useEffect(() => {
@@ -45,11 +45,38 @@ export default function Shell({ children }: { children: ReactNode }) {
   const status = (h: string) => (h !== tabAktif ? undefined : h === path ? ("page" as const) : ("true" as const));
   const tampilNav = !TANPA_NAV.includes(path);
 
-  // Data awal tersedia sejak render server, jadi halaman langsung dirender. Yang ditahan hanya saat belum masuk.
+  // Data awal tersedia sejak render server atau dimuat via /api/posisi. Saat gagal muat sebelum sesi terbaca, beri tombol muat ulang.
   if (!saya) {
+    if (siap && skenario === "gagal") {
+      return (
+        <div className="app">
+          <div className="col">
+            <header className="hd">
+              <div>
+                <h1>Pasti Cuan</h1>
+              </div>
+            </header>
+            <main>
+              <GagalMuat />
+            </main>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="app">
-        <div className="col" aria-busy="true" />
+        <div className="col" aria-busy="true">
+          <header className="hd" aria-hidden="true">
+            <div style={{ flex: 1 }}>
+              <div className="sk" style={{ width: 140, height: 26 }} />
+              <div className="sk" style={{ width: 220, height: 12, marginTop: 8 }} />
+            </div>
+            <div className="sk" style={{ width: 36, height: 36, borderRadius: 999 }} />
+          </header>
+          <main>
+            <Memuat kartu={3} />
+          </main>
+        </div>
       </div>
     );
   }

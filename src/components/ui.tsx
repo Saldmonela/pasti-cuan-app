@@ -1,7 +1,7 @@
 // Komponen bersama. Hanya dipakai dari client component (halaman memakai "use client").
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   IconAlertTriangle,
   IconChevronLeft,
@@ -243,17 +243,34 @@ export function Memuat({ kartu = 3 }: { kartu?: number }) {
 }
 
 export function GagalMuat() {
-  const { setSkenario } = useStore();
+  const { isPrototype, setSkenario, refresh } = useStore();
+  const [coba, setCoba] = useState(false);
   return (
     <section className="card empty" role="alert">
       <span className="ico-dot">
         <IconAlertTriangle size={22} aria-hidden="true" />
       </span>
       <h2 style={{ fontSize: 15, fontWeight: 600 }}>Data belum bisa dimuat.</h2>
-      <p className="note">Cek koneksi kamu, lalu coba lagi.</p>
-      <button type="button" className="btn ton sm" onClick={() => setSkenario("normal")}>
+      <p className="note">Cek koneksi internet kamu, lalu coba muat ulang.</p>
+      <button
+        type="button"
+        className="btn ton sm"
+        disabled={coba}
+        onClick={async () => {
+          if (isPrototype) {
+            setSkenario("normal");
+            return;
+          }
+          setCoba(true);
+          try {
+            await refresh();
+          } finally {
+            setCoba(false);
+          }
+        }}
+      >
         <IconRefresh size={18} aria-hidden="true" />
-        Coba lagi
+        {coba ? "Memuat…" : "Coba lagi"}
       </button>
     </section>
   );

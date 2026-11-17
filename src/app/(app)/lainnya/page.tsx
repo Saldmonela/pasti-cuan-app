@@ -9,11 +9,11 @@ import { useStore } from "@/lib/store";
 
 const ISTILAH: [string, string][] = [
   ["Pool", "Seluruh dana patungan di wallet \"Pasti Cuan\"."],
-  ["Snapshot", "Catatan resmi saldo pool pada satu tanggal, dibuat otomatis jam 08.00 WIB. Dasar semua transaksi."],
-  ["Nilai live", "Nilai pool terbaru, dibaca dari wallet tiap menit. Transfer yang belum masuk hitungan dinetralkan dulu. Bersifat perkiraan."],
-  ["Arus onchain", "Transfer masuk atau keluar wallet pool. Pengelola mencocokkannya dengan setoran atau penarikan."],
+  ["Snapshot", "Rekap resmi saldo pool tiap jam 08.00 WIB yang dicatat otomatis."],
+  ["Nilai live", "Nilai pool terbaru, dibaca dari wallet tiap menit. Transfer yang belum dicocokkan dinetralkan dulu. Bersifat perkiraan."],
+  ["Arus onchain", "Transfer masuk atau keluar wallet pool. Pengelola mencocokkannya dengan setoran atau penarikan pada waktu transfer."],
   ["Unit", "Satuan kepemilikan pool. Setoran membeli unit, penarikan menjual unit."],
-  ["NAV", "Harga 1 unit pada suatu tanggal, dalam USD dan SOL."],
+  ["NAV", "Harga 1 unit pada suatu waktu, dalam USD dan SOL."],
   ["Modal dasar", "Total uang yang sudah kamu setor dikurangi bagian modal yang sudah ditarik."],
   ["Nilai kotor", "Unit kamu dikali NAV, sebelum dipotong fee."],
   ["Fee terutang", "10% dari untung kamu, hanya kalau untung. Belum dibayar sampai ada penarikan."],
@@ -23,11 +23,15 @@ const ISTILAH: [string, string][] = [
 ];
 
 export default function Lainnya() {
-  const { saya, keluar, hasil } = useStore();
+  const { saya, data, keluar, hasil } = useStore();
   const router = useRouter();
   if (!saya) return null;
   const pos = hasil.posisi.find((p) => p.id === saya.id)!;
   const pengelola = saya.peran === "pengelola";
+  const pengelolaNama =
+    data.anggota.find((a) => a.peran === "pengelola" && a.aktif)?.nama ??
+    data.anggota.find((a) => a.peran === "pengelola")?.nama ??
+    "pengelola";
 
   return (
     <>
@@ -102,7 +106,7 @@ export default function Lainnya() {
         </section>
 
         <p className="note" style={{ padding: "0 4px 8px" }}>
-          App ini hanya buku catatan bersama. Uang tetap dikelola Galih di wallet, dan app tidak pernah meminta private key atau seed phrase.
+          App ini hanya buku catatan bersama. Uang tetap dikelola {pengelolaNama} di wallet, dan app tidak pernah meminta private key atau seed phrase.
         </p>
       </main>
     </>

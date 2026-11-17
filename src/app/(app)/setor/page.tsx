@@ -2,8 +2,8 @@
 // Setor modal (US-03): investor mengajukan, pengelola mengonfirmasi setelah dana diterima.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type SubmitEvent } from "react";
-import { IconInfoCircle } from "@tabler/icons-react";
+import { useEffect, useState, type SubmitEvent } from "react";
+import { IconCheck, IconCopy, IconExternalLink, IconInfoCircle } from "@tabler/icons-react";
 import { BackBar, describedBy, Field, StatusBanners } from "@/components/ui";
 import { desimal, parseAngka, tanggal, usd } from "@/lib/format";
 import { useStore } from "@/lib/store";
@@ -18,10 +18,33 @@ export default function Setor() {
   const [catatan, setCatatan] = useState("");
   const [err, setErr] = useState<Record<string, string>>({});
   const [kirim, setKirim] = useState(false);
+  const [salin, setSalin] = useState(false);
+
+  useEffect(() => {
+    if (!salin) return;
+    const t = setTimeout(() => setSalin(false), 2000);
+    return () => clearTimeout(t);
+  }, [salin]);
+
   if (!saya) return null;
 
   const pending = menunggu.find((p) => p.anggotaId === saya.id && p.jenis === "setor");
   const nonaktif = offline || !!pending;
+  const walletPool = data.pengaturan.alamatWalletPool;
+  const pengelolaNama =
+    data.anggota.find((a) => a.peran === "pengelola" && a.aktif)?.nama ??
+    data.anggota.find((a) => a.peran === "pengelola")?.nama ??
+    "Pengelola";
+
+  async function salinWallet() {
+    try {
+      await navigator.clipboard.writeText(walletPool);
+      setSalin(true);
+      tampilkan("Alamat wallet pool disalin.");
+    } catch {
+      tampilkan("Gagal menyalin otomatis. Salin alamat secara manual.");
+    }
+  }
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -69,10 +92,36 @@ export default function Setor() {
         <section className="card">
           <h2>Cara kerjanya</h2>
           <ol className="note" style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
-            <li>Transfer dana ke wallet Pasti Cuan seperti biasa.</li>
-            <li>Ajukan setoran di sini dengan jumlah dan tanggal transfernya.</li>
-            <li>Galih mengonfirmasi setelah dana diterima. Unit kamu dibeli dengan harga 1 unit pada tanggal efektif, jadi kamu tidak ikut untung sebelum masuk.</li>
+            <li>Kirim dana ke alamat wallet pool Pasti Cuan di bawah ini.</li>
+            <li>Ajukan setoran di formulir ini sesuai jumlah dan tanggal transfernya.</li>
+            <li>{pengelolaNama} mencocokkan transfer kamu. Unit dihitung memakai nilai pool saat transfer terdeteksi di wallet.</li>
           </ol>
+          <div style={{ background: "var(--field)", borderRadius: 16, padding: "12px 14px", marginTop: 12, display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <span className="lb" style={{ fontWeight: 600, color: "var(--ink)" }}>Alamat wallet tujuan (Solana)</span>
+              <span className="chip peran">SOL / USDC</span>
+            </div>
+            <div className="num" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)", overflowWrap: "anywhere", userSelect: "all" }}>
+              {walletPool}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <button type="button" className="btn ton sm" style={{ padding: "0 14px" }} onClick={salinWallet}>
+                {salin ? <IconCheck size={16} aria-hidden="true" /> : <IconCopy size={16} aria-hidden="true" />}
+                {salin ? "Tersalin" : "Salin alamat"}
+              </button>
+              <a
+                href={`https://solscan.io/account/${walletPool}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn ghost sm"
+                style={{ padding: "0 10px" }}
+              >
+                <IconExternalLink size={16} aria-hidden="true" />
+                Cek di Solscan
+              </a>
+            </div>
+            <p className="note">Kirim hanya lewat jaringan Solana (SOL atau USDC) supaya dana tidak hilang.</p>
+          </div>
         </section>
         <form className="card form" onSubmit={submit} noValidate aria-describedby={err.form ? "form-err" : undefined}>
           <fieldset disabled={nonaktif} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>

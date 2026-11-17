@@ -449,7 +449,7 @@ Deno.serve(async (req) => {
     const lastFlowMs = cfg.last_flow_check_at ? Date.parse(cfg.last_flow_check_at) : 0;
     if (forceFlow || !lastFlowMs || now.getTime() - lastFlowMs >= 4.5 * 60 * 1000) {
       flowChecked = true;
-      const sigParams: Record<string, unknown> = { limit: 25 };
+      const sigParams: Record<string, unknown> = { limit: 50 };
       if (cfg.last_signature) sigParams.until = cfg.last_signature;
 
       const sigs = (await rpcCall(rpcUrl, "getSignaturesForAddress", [
@@ -466,7 +466,7 @@ Deno.serve(async (req) => {
           for (const s of ordered) {
             const tx = (await rpcCall(rpcUrl, "getTransaction", [
               s.signature,
-              { encoding: "jsonParsed", maxSupportedTransactionVersion: 0 },
+              { encoding: "jsonParsed", maxSupportedTransactionVersion: 1 },
             ])) as ParsedTx | null;
             if (!tx || !tx.meta) continue;
 

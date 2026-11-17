@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type SubmitEvent } from "react";
-import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCheck, IconInfoCircle } from "@tabler/icons-react";
 import { BackBar, describedBy, Field, Sheet, StatusBanners } from "@/components/ui";
 import { simulasiTarik } from "@/lib/engine";
-import { angka, desimal, parseAngka, persen, uang, usd } from "@/lib/format";
+import { angka, desimal, isSolanaAddress, jam, parseAngka, persen, ringkasAlamat, uang, usd } from "@/lib/format";
 import { useStore } from "@/lib/store";
 
 export default function Tarik() {
@@ -33,6 +33,9 @@ export default function Tarik() {
     if (n === null || !(n > 0)) e2.jumlah = "Tulis jumlah penarikan lebih dari 0.";
     else if (desimal(jumlah) > 2) e2.jumlah = "Jumlah USD maksimal 2 angka di belakang koma.";
     else if (lewat) e2.jumlah = `Maksimal yang bisa kamu tarik hari ini ${usd(pos.netUsd)}.`;
+    if (alamat.trim() && !isSolanaAddress(alamat)) {
+      e2.alamat = "Alamat wallet Solana harus 32–44 karakter (huruf dan angka base58).";
+    }
     setErr(e2);
     if (!Object.keys(e2).length) setKonfirmasi({ net: pos.netUsd });
   }
@@ -153,7 +156,7 @@ export default function Tarik() {
                   {pos.profitUsd < 0 && <p className="note" style={{ marginTop: 6 }}>Kamu sedang rugi, jadi tidak ada fee yang dipotong.</p>}
                   {hasil.live && (
                     <p className="note" style={{ marginTop: 6 }}>
-                      Perkiraan dengan nilai {hasil.live.dibacaPada.slice(11, 16).replace(":", ".")} WIB. Angka final memakai nilai pada tanggal efektif.
+                      Perkiraan dengan nilai live {jam(hasil.live.dibacaPada)} WIB. Angka final memakai nilai saat transfer dicocokkan.
                     </p>
                   )}
                 </div>
@@ -162,11 +165,46 @@ export default function Tarik() {
               )}
             </div>
 
-            <Field id="alamat" label="Alamat wallet tujuan" opsional hint="Maks. 64 karakter. Pengelola mentransfer di luar app.">
-              <div className="inp">
-                <input id="alamat" maxLength={64} autoComplete="off" spellCheck={false} value={alamat} onChange={(e) => setAlamat(e.target.value)} aria-describedby="alamat-hint" />
+            <Field id="alamat" label="Alamat wallet tujuan" opsional error={err.alamat} hint="Alamat Solana tujuan (32–44 karakter). Pengelola mentransfer di luar app.">
+              <div className={`inp${err.alamat ? " err" : ""}`}>
+                <input
+                  id="alamat"
+                  maxLength={64}
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={alamat}
+                  onChange={(e) => {
+                    setAlamat(e.target.value);
+                    if (err.alamat) setErr((prev) => ({ ...prev, alamat: "" }));
+                  }}
+                  aria-invalid={!!err.alamat}
+                  aria-describedby={describedBy("alamat", err.alamat, true)}
+                />
               </div>
             </Field>
+            {saya.alamatWallet && saya.alamatWallet.length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: -8 }}>
+                {saya.alamatWallet.map((w) => {
+                  const terpilih = alamat.trim() === w;
+                  return (
+                    <button
+                      key={w}
+                      type="button"
+                      aria-pressed={terpilih}
+                      className="btn ton sm"
+                      style={terpilih ? { background: "var(--forest-ink)", color: "var(--lime-action)" } : undefined}
+                      onClick={() => {
+                        setAlamat(w);
+                        if (err.alamat) setErr((prev) => ({ ...prev, alamat: "" }));
+                      }}
+                    >
+                      {terpilih && <IconCheck size={16} aria-hidden="true" />}
+                      Pakai {ringkasAlamat(w)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <Field id="catatan" label="Catatan" opsional hint={`${catatan.length}/200 karakter`}>
               <div className="inp">
                 <textarea id="catatan" maxLength={200} rows={2} value={catatan} onChange={(e) => setCatatan(e.target.value)} aria-describedby="catatan-hint" />
