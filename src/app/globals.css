@@ -190,7 +190,7 @@ p { margin: 0; }
 .chart { position: relative; margin: var(--s-xl) 0 14px; }
 .chart svg { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: crosshair; overflow: visible; }
 .chart svg:focus-visible { outline-offset: 4px; border-radius: 6px; }
-.chart .ax { font-size: 10px; fill: var(--ink-muted); }
+.chart .ax { font-size: 10px; fill: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .chart .ln { animation: draw 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
 @keyframes draw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) { .chart .ln { animation: none; } }

@@ -16,7 +16,19 @@ export interface TitikGrafik {
 const W = 300;
 const H = 120;
 const PT = 12;
-const PB = 6;
+const PB = 8;
+const PL = 4;
+const STEPS = [0.5, 1, 2, 5, 10, 20, 25, 50, 100];
+
+const niceStep = (span: number) => STEPS.find((s) => span / s <= 14) ?? Math.ceil(span / 10);
+
+const fmtPct = (v: number) => {
+  if (Math.abs(v) < 1e-9) return "0%";
+  const tanda = v > 0 ? "+" : "−";
+  const a = Math.abs(v);
+  const angka = Number.isInteger(a) ? String(a) : a.toFixed(1).replace(".", ",");
+  return `${tanda}${angka}%`;
+};
 
 export default function Chart({
   titik,
@@ -37,26 +49,46 @@ export default function Chart({
   const sentuh = useRef<{ x: number; y: number; scrub: boolean } | null>(null);
   const L = titik.length - 1;
   const dua = titik.some((t) => t.nilai2 !== undefined);
+  const pr = persen ? 38 : 4;
 
   const g = useMemo(() => {
     const v = titik.map((t) => t.nilai);
     const v2 = titik.map((t) => t.nilai2 ?? t.nilai);
     const semua = persen ? [...v, ...v2, 0] : v;
-    const lo = Math.min(...semua);
-    const hi = Math.max(...semua);
-    const m = (hi - lo) * 0.1 || Math.abs(hi) * 0.05 || 1;
+    const rawLo = Math.min(...semua);
+    const rawHi = Math.max(...semua);
+    let lo = rawLo;
+    let hi = rawHi;
+    let ticks: number[] = [];
+
+    if (persen) {
+      const step = niceStep(rawHi - rawLo || 1);
+      const hiTick = rawHi > 0 ? Math.ceil(rawHi / step) * step : 0;
+      const loTick = rawLo < 0 ? Math.floor(rawLo / step) * step : 0;
+      hi = Math.max(rawHi, hiTick);
+      lo = Math.min(rawLo, loTick);
+      ticks = [0];
+      if (hiTick > 0) ticks.push(hiTick);
+      if (loTick < 0) ticks.push(loTick);
+    }
+
+    const m = persen ? 0 : (hi - lo) * 0.1 || Math.abs(hi) * 0.05 || 1;
     const x0 = titik[0]?.x ?? 0;
     const span = (titik[L]?.x ?? 0) - x0;
-    const X = (k: number) => (L && span ? 4 + ((titik[k].x - x0) * (W - 8)) / span : W / 2);
-    const Y = (x: number) => PT + (H - PT - PB) * (1 - (x - lo + m) / (hi - lo + 2 * m));
+    const plotW = W - PL - pr;
+    const X = (k: number) => (L && span ? PL + ((titik[k].x - x0) * plotW) / span : PL + plotW / 2);
+    const Y = (x: number) => PT + (H - PT - PB) * (1 - (x - lo + m) / (hi - lo + 2 * m || 1));
     const jalur = (a: number[]) => a.map((x, k) => `${k ? "L" : "M"}${X(k).toFixed(1)} ${Y(x).toFixed(1)}`).join("");
-    return { X, Y, d: jalur(v), d2: jalur(v2), v, v2, x0, span };
-  }, [titik, L, persen]);
+    const y0 = Y(0);
+    // Hindari label bertumpuk jika terlalu dekat garis 0%
+    const sumbu = ticks.filter((val) => val === 0 || Math.abs(Y(val) - y0) >= 16);
+    return { X, Y, d: jalur(v), d2: jalur(v2), v, v2, x0, span, plotW, sumbu };
+  }, [titik, L, persen, pr]);
 
   /** Titik terdekat secara horizontal dari posisi pointer (snap). */
   const terdekat = (clientX: number) => {
     const r = svgRef.current!.getBoundingClientRect();
-    const t = g.x0 + ((((clientX - r.left) / r.width) * W - 4) / (W - 8)) * g.span;
+    const t = g.x0 + ((((clientX - r.left) / r.width) * W - PL) / g.plotW) * g.span;
     let best = 0;
     for (let k = 1; k <= L; k++) if (Math.abs(titik[k].x - t) < Math.abs(titik[best].x - t)) best = k;
     return best;
@@ -119,7 +151,13 @@ export default function Chart({
             <stop offset="1" stopColor="var(--forest-ink)" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {persen && <line x1={0} x2={W} y1={g.Y(0)} y2={g.Y(0)} stroke="var(--hairline)" strokeWidth={1} />}
+        {persen && <line x1={PL} x2={W - pr + 2} y1={g.Y(0)} y2={g.Y(0)} stroke="var(--hairline)" strokeWidth={1} />}
+        {persen &&
+          g.sumbu.map((val) => (
+            <text key={val} x={W - 1} y={g.Y(val)} dy="0.32em" textAnchor="end" className="ax" aria-hidden="true">
+              {fmtPct(val)}
+            </text>
+          ))}
         {!persen && L > 0 && <path d={`${g.d}L${g.X(L).toFixed(1)} ${H - PB}L${g.X(0).toFixed(1)} ${H - PB}Z`} fill={`url(#${gid})`} />}
         {dua && (
           <path
@@ -138,6 +176,7 @@ export default function Chart({
         {titik.map((p, k) =>
           p.ditandai ? <circle key={k} cx={g.X(k)} cy={g.Y(g.v[k])} r={4} fill="var(--card-white)" stroke="var(--forest-ink)" strokeWidth={2} /> : null,
         )}
+        {i === null && dua && <circle cx={g.X(L)} cy={g.Y(g.v2[L])} r={3} fill="var(--ink-muted)" />}
         {i === null && <circle cx={g.X(L)} cy={g.Y(g.v[L])} r={3.5} fill="var(--forest-ink)" />}
         {i !== null && (
           <g>
