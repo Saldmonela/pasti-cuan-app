@@ -1,4 +1,5 @@
 import java.security.MessageDigest
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -6,6 +7,31 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+// ---------- Konfigurasi backend live ----------
+// Urutan sumber: android-app/local.properties -> variabel lingkungan -> ../.env.local (env web).
+// Hanya URL Supabase + anon key (publik) yang ikut ke APK. Service role key TIDAK PERNAH dibaca di sini.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val envWeb: Map<String, String> = rootProject.file("../.env.local").let { f ->
+    if (!f.exists()) emptyMap() else f.readLines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+        .associate { line ->
+            val i = line.indexOf('=')
+            line.substring(0, i).trim() to line.substring(i + 1).trim().removeSurrounding("\"")
+        }
+}
+fun cfg(key: String, default: String = ""): String =
+    localProps.getProperty(key) ?: System.getenv(key) ?: envWeb[key] ?: default
+
+val supabaseUrl = cfg("NEXT_PUBLIC_SUPABASE_URL").trimEnd('/')
+val supabaseAnonKey = cfg("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+val apiUrlRelease = cfg("PASTI_CUAN_API_URL", "https://pasti-cuan-app.vercel.app").trimEnd('/')
+val apiUrlDebug = cfg("PASTI_CUAN_API_URL_DEBUG", apiUrlRelease).trimEnd('/')
+fun q(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
     namespace = "id.pasticuan.wallet"
@@ -15,13 +41,16 @@ android {
         applicationId = "id.pasticuan.wallet"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.1-beta"
+        versionCode = 4
+        versionName = "0.3.0-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "SUPABASE_URL", q(supabaseUrl))
+        buildConfigField("String", "SUPABASE_ANON_KEY", q(supabaseAnonKey))
     }
 
     buildTypes {
@@ -31,10 +60,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "API_BASE_URL", q(apiUrlRelease))
         }
         debug {
             applicationIdSuffix = ""
             versionNameSuffix = ""
+            buildConfigField("String", "API_BASE_URL", q(apiUrlDebug))
         }
     }
 
@@ -122,6 +153,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.browser:browser:1.8.0")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -131,6 +163,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -88,6 +89,7 @@ import id.pasticuan.wallet.ui.state.AppRoute
 import id.pasticuan.wallet.ui.state.AppUiState
 import id.pasticuan.wallet.ui.state.AppViewModel
 import id.pasticuan.wallet.ui.theme.PastiCuanTheme
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import kotlin.math.abs
 import kotlin.math.min
@@ -121,6 +123,7 @@ fun KelolaArusScreen(
     val c = PastiCuanTheme.colors
     val context = LocalContext.current
     val data = state.data ?: return
+    val scope = rememberCoroutineScope()
 
     var filter by rememberSaveable { mutableStateOf(FilterArus.BELUM) }
     var bukaArus by remember { mutableStateOf<ArusOnchain?>(null) }
@@ -298,10 +301,12 @@ fun KelolaArusScreen(
                                                 text = "Batalkan penandaan",
                                                 isGhost = true,
                                                 height = 38.dp,
-                                                enabled = !state.offline,
+                                                enabled = !state.offline && !state.sedangMengirim,
                                                 onClick = {
-                                                    val gagal = viewModel.batalTandaiArus(a.id)
-                                                    errBaris[a.id] = gagal.orEmpty()
+                                                    scope.launch {
+                                                        val gagal = viewModel.batalTandaiArus(a.id)
+                                                        errBaris[a.id] = gagal.orEmpty()
+                                                    }
                                                 }
                                             )
                                         }
@@ -518,23 +523,25 @@ fun KelolaArusScreen(
                         modifier = Modifier.weight(1f)
                     )
                     PastiCuanButton(
-                        text = when (modeSheet) {
+                        text = if (state.sedangMengirim) "Menyimpan…" else when (modeSheet) {
                             "cocok" -> "Cocokkan"
                             "buat" -> "Buat & cocokkan"
                             else -> "Simpan tanda"
                         },
-                        enabled = !state.offline && (modeSheet != "cocok" || pilihPermintaanId.isNotEmpty()),
+                        enabled = !state.offline && !state.sedangMengirim && (modeSheet != "cocok" || pilihPermintaanId.isNotEmpty()),
                         onClick = {
                             val ids = if (modeSheet == "cocok" || modeSheet == "buat") semuaIds else listOf(target.id)
-                            val err = viewModel.prosesArusOnchain(
-                                arusIds = ids,
-                                mode = modeSheet,
-                                permintaanId = pilihPermintaanId,
-                                anggotaId = pilihAnggotaId,
-                                catatan = catatan,
-                                alasanSelisih = alasanSelisih
-                            )
-                            if (err != null) errSheet = err else bukaArus = null
+                            scope.launch {
+                                val err = viewModel.prosesArusOnchain(
+                                    arusIds = ids,
+                                    mode = modeSheet,
+                                    permintaanId = pilihPermintaanId,
+                                    anggotaId = pilihAnggotaId,
+                                    catatan = catatan,
+                                    alasanSelisih = alasanSelisih
+                                )
+                                if (err != null) errSheet = err else bukaArus = null
+                            }
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -557,6 +564,7 @@ fun KelolaSaldoScreen(
     val c = PastiCuanTheme.colors
     val context = LocalContext.current
     val data = state.data ?: return
+    val scope = rememberCoroutineScope()
 
     val adaHariIni = data.snapshots.any { it.tanggal == state.hariIni }
     var bukaForm by rememberSaveable { mutableStateOf(false) }
@@ -599,28 +607,30 @@ fun KelolaSaldoScreen(
 
     fun eksekusiSimpan() {
         val fl = if (feeLpTeks.trim().isNotEmpty()) Formatters.parseAngka(feeLpTeks) else null
-        val gagal = viewModel.simpanSnapshot(
-            tanggal = tgl,
-            nilaiUsd = nUsd ?: 0.0,
-            saldoSol = nSol ?: 0.0,
-            feeLpSol = fl,
-            catatan = catatan,
-            alasan = alasan,
-            isUbah = modeForm == "ubah"
-        )
-        dialogLonjakanPct = null
-        dialogKonfirmasiUbah = false
-        if (gagal != null) {
-            errMsg = gagal
-        } else {
-            modeForm = "baru"
-            bukaForm = false
-            usdTeks = ""
-            solTeks = ""
-            feeLpTeks = ""
-            catatan = ""
-            alasan = ""
-            errMsg = null
+        scope.launch {
+            val gagal = viewModel.simpanSnapshot(
+                tanggal = tgl,
+                nilaiUsd = nUsd ?: 0.0,
+                saldoSol = nSol ?: 0.0,
+                feeLpSol = fl,
+                catatan = catatan,
+                alasan = alasan,
+                isUbah = modeForm == "ubah"
+            )
+            dialogLonjakanPct = null
+            dialogKonfirmasiUbah = false
+            if (gagal != null) {
+                errMsg = gagal
+            } else {
+                modeForm = "baru"
+                bukaForm = false
+                usdTeks = ""
+                solTeks = ""
+                feeLpTeks = ""
+                catatan = ""
+                alasan = ""
+                errMsg = null
+            }
         }
     }
 
@@ -846,8 +856,8 @@ fun KelolaSaldoScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             PastiCuanButton(
-                                text = "Simpan",
-                                enabled = !state.offline,
+                                text = if (state.sedangMengirim) "Menyimpan…" else "Simpan",
+                                enabled = !state.offline && !state.sedangMengirim,
                                 onClick = {
                                     when {
                                         tgl > state.hariIni -> errMsg = "Tanggal tidak boleh di masa depan."
@@ -1040,18 +1050,21 @@ fun KelolaSaldoScreen(
                     )
                     if (hapusTarget != null) {
                         PastiCuanButton(
-                            text = "Hapus",
+                            text = if (state.sedangMengirim) "Menghapus…" else "Hapus",
                             isDanger = true,
-                            enabled = !dipakai,
+                            enabled = !dipakai && !state.sedangMengirim,
                             onClick = {
-                                viewModel.hapusSnapshot(hapusTarget)
-                                dialogHapusTgl = null
+                                scope.launch {
+                                    viewModel.hapusSnapshot(hapusTarget)
+                                    dialogHapusTgl = null
+                                }
                             },
                             modifier = Modifier.weight(1f)
                         )
                     } else {
                         PastiCuanButton(
-                            text = if (dialogLonjakanPct != null) "Simpan tetap" else "Lanjutkan",
+                            text = if (state.sedangMengirim) "Menyimpan…" else if (dialogLonjakanPct != null) "Simpan tetap" else "Lanjutkan",
+                            enabled = !state.sedangMengirim,
                             onClick = { eksekusiSimpan() },
                             modifier = Modifier.weight(1f)
                         )
@@ -1081,6 +1094,7 @@ fun KelolaPermintaanScreen(
     val c = PastiCuanTheme.colors
     val data = state.data ?: return
     val hasil = state.hasil ?: return
+    val scope = rememberCoroutineScope()
 
     var filter by rememberSaveable { mutableStateOf(FilterKelolaReq.MENUNGGU) }
     var targetAksi by remember { mutableStateOf<Pair<Permintaan, String>?>(null) } // "selesai" | "tolak"
@@ -1352,21 +1366,24 @@ fun KelolaPermintaanScreen(
                         modifier = Modifier.weight(1f)
                     )
                     PastiCuanButton(
-                        text = when {
+                        text = if (state.sedangMengirim) "Memproses…" else when {
                             mode == "tolak" -> "Tolak"
                             p.jenis == Jenis.SETOR -> "Konfirmasi"
                             else -> "Tandai selesai"
                         },
                         isDanger = mode == "tolak",
+                        enabled = !state.sedangMengirim,
                         onClick = {
-                            val err = if (mode == "tolak") {
-                                viewModel.tolakPermintaan(p.id, alasan)
-                            } else {
-                                val j = Formatters.parseAngka(jumlahFinal)
-                                if (j == null || j <= 0.0) "Jumlah harus lebih dari 0."
-                                else viewModel.selesaikanPermintaanManual(p.id, tglEfektif, j, bukti, alasan)
+                            scope.launch {
+                                val err = if (mode == "tolak") {
+                                    viewModel.tolakPermintaan(p.id, alasan)
+                                } else {
+                                    val j = Formatters.parseAngka(jumlahFinal)
+                                    if (j == null || j <= 0.0) "Jumlah harus lebih dari 0."
+                                    else viewModel.selesaikanPermintaanManual(p.id, tglEfektif, j, bukti, alasan)
+                                }
+                                if (err != null) errSheet = err else targetAksi = null
                             }
-                            if (err != null) errSheet = err else targetAksi = null
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -1389,6 +1406,7 @@ fun KelolaAnggotaScreen(
     val c = PastiCuanTheme.colors
     val data = state.data ?: return
     val hasil = state.hasil ?: return
+    val scope = rememberCoroutineScope()
     val saya = state.saya ?: return
 
     var namaBaru by rememberSaveable { mutableStateOf("") }
@@ -1482,10 +1500,12 @@ fun KelolaAnggotaScreen(
                                             text = if (a.aktif) "Nonaktifkan" else "Aktifkan",
                                             isGhost = true,
                                             height = 36.dp,
-                                            enabled = !state.offline,
+                                            enabled = !state.offline && !state.sedangMengirim,
                                             onClick = {
-                                                val gagal = viewModel.setAktifAnggota(a.id, !a.aktif)
-                                                errBaris[a.id] = gagal.orEmpty()
+                                                scope.launch {
+                                                    val gagal = viewModel.setAktifAnggota(a.id, !a.aktif)
+                                                    errBaris[a.id] = gagal.orEmpty()
+                                                }
                                             }
                                         )
                                     }
@@ -1539,19 +1559,21 @@ fun KelolaAnggotaScreen(
 
                     Spacer(Modifier.height(16.dp))
                     PastiCuanButton(
-                        text = "Tambah anggota",
-                        enabled = !state.offline,
+                        text = if (state.sedangMengirim) "Menyimpan…" else "Tambah anggota",
+                        enabled = !state.offline && !state.sedangMengirim,
                         onClick = {
                             val list = walletBaru.split(Regex("[\\s,]+")).filter { it.isNotBlank() }
-                            val errs = viewModel.tambahAnggota(namaBaru, emailBaru, peranBaru, list)
-                            if (errs.isNotEmpty()) {
-                                errForm = errs
-                            } else {
-                                namaBaru = ""
-                                emailBaru = ""
-                                walletBaru = ""
-                                peranBaru = Peran.INVESTOR
-                                errForm = emptyMap()
+                            scope.launch {
+                                val errs = viewModel.tambahAnggota(namaBaru, emailBaru, peranBaru, list)
+                                if (errs.isNotEmpty()) {
+                                    errForm = errs
+                                } else {
+                                    namaBaru = ""
+                                    emailBaru = ""
+                                    walletBaru = ""
+                                    peranBaru = Peran.INVESTOR
+                                    errForm = emptyMap()
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -1599,12 +1621,14 @@ fun KelolaAnggotaScreen(
                         modifier = Modifier.weight(1f)
                     )
                     PastiCuanButton(
-                        text = "Simpan",
-                        enabled = !state.offline,
+                        text = if (state.sedangMengirim) "Menyimpan…" else "Simpan",
+                        enabled = !state.offline && !state.sedangMengirim,
                         onClick = {
                             val list = editWalletTeks.split(Regex("[\\s,]+")).filter { it.isNotBlank() }
-                            val err = viewModel.ubahWalletAnggota(target.id, list)
-                            if (err != null) editWalletErr = err else editTarget = null
+                            scope.launch {
+                                val err = viewModel.ubahWalletAnggota(target.id, list)
+                                if (err != null) editWalletErr = err else editTarget = null
+                            }
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -1627,6 +1651,7 @@ fun KelolaPengaturanScreen(
     val c = PastiCuanTheme.colors
     val context = LocalContext.current
     val data = state.data ?: return
+    val scope = rememberCoroutineScope()
     val p = data.pengaturan
 
     var fee by rememberSaveable { mutableStateOf(Formatters.angka(p.feePersen * 100.0, 0)) }
@@ -1854,21 +1879,24 @@ fun KelolaPengaturanScreen(
                         modifier = Modifier.weight(1f)
                     )
                     PastiCuanButton(
-                        text = "Simpan",
+                        text = if (state.sedangMengirim) "Menyimpan…" else "Simpan",
+                        enabled = !state.sedangMengirim,
                         onClick = {
-                            viewModel.ubahPengaturan(
-                                p.copy(
-                                    feePersen = (nFee ?: 10.0) / 100.0,
-                                    satuanDasarFee = dasar,
-                                    batasDataLamaHari = nLama ?: 2,
-                                    ambangLonjakanPersen = nAmbang ?: 30.0,
-                                    ambangLikuiditasTokenUsd = nLikuid ?: 10000.0,
-                                    ambangDustUsd = nDust ?: 1.0,
-                                    batasLiveLamaMenit = nLiveLama ?: 15,
-                                    toleransiCocokPersen = nToleransi ?: 2.0
+                            scope.launch {
+                                viewModel.ubahPengaturan(
+                                    p.copy(
+                                        feePersen = (nFee ?: 10.0) / 100.0,
+                                        satuanDasarFee = dasar,
+                                        batasDataLamaHari = nLama ?: 2,
+                                        ambangLonjakanPersen = nAmbang ?: 30.0,
+                                        ambangLikuiditasTokenUsd = nLikuid ?: 10000.0,
+                                        ambangDustUsd = nDust ?: 1.0,
+                                        batasLiveLamaMenit = nLiveLama ?: 15,
+                                        toleransiCocokPersen = nToleransi ?: 2.0
+                                    )
                                 )
-                            )
-                            konfirmasiTerbuka = false
+                                konfirmasiTerbuka = false
+                            }
                         },
                         modifier = Modifier.weight(1f)
                     )

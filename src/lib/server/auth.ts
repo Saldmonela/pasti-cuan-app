@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdmin, createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  bearerTokenDariRequest,
+  createSupabaseAdmin,
+  createSupabaseServerClient,
+  createSupabaseTokenClient,
+} from "@/lib/supabase/server";
 import type { Anggota } from "@/lib/types";
 
 export type ErrorKode =
@@ -58,11 +63,13 @@ export function mapAnggota(row: DbAnggota): Anggota {
 }
 
 export async function requireMember() {
-  const sb = await createSupabaseServerClient();
+  // Aplikasi Android mengirim `Authorization: Bearer <access_token>`; web memakai cookie sesi.
+  const token = await bearerTokenDariRequest();
+  const sb = token ? createSupabaseTokenClient(token) : await createSupabaseServerClient();
   const {
     data: { user },
     error: authErr,
-  } = await sb.auth.getUser();
+  } = token ? await sb.auth.getUser(token) : await sb.auth.getUser();
   if (authErr || !user || !user.email) {
     throw new ApiError(401, "TIDAK_LOGIN", "Sesi kamu berakhir. Silakan masuk lagi.");
   }
@@ -91,7 +98,8 @@ export async function requireMember() {
   }
 
   if (!row || !row.aktif) {
-    await sb.auth.signOut();
+    // Sesi cookie web dibersihkan; untuk token Android, aplikasi sendiri yang menghapus sesinya saat 403.
+    if (!token) await sb.auth.signOut();
     throw new ApiError(
       403,
       "TIDAK_BERHAK",

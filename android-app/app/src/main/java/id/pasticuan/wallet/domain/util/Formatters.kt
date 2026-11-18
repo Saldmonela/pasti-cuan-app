@@ -104,10 +104,32 @@ object Formatters {
         return if (sep.isNotEmpty()) t.length - t.lastIndexOf(sep) - 1 else 0
     }
 
-    fun ms(iso: String): Long {
-        val normalized = if (iso.length <= 10) "${iso}T00:00:00+07:00" else iso
-        return OffsetDateTime.parse(normalized).toInstant().toEpochMilli()
+    private val wibIsoFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'+07:00'")
+    private val shortOffsetRegex = Regex("([+-]\\d{2})$")
+    private val compactOffsetRegex = Regex("([+-]\\d{2})(\\d{2})$")
+
+    /**
+     * Parsing ISO-8601 maupun stempel waktu Postgres/PostgREST (mis. `2026-11-17 01:00:00+00`,
+     * `2026-11-17T01:00:00.123456+00:00`, `2026-11-17T01:00:00Z`, atau `2026-11-17`) menjadi [Instant].
+     */
+    fun parseInstantSafe(iso: String): Instant {
+        var s = iso.trim()
+        if (s.isEmpty()) return Instant.EPOCH
+        if (s.length <= 10) {
+            return LocalDate.parse(s).atStartOfDay(wibOffset).toInstant()
+        }
+        if (s.length > 10 && s[10] == ' ') {
+            s = s.substring(0, 10) + "T" + s.substring(11)
+        }
+        s = shortOffsetRegex.replace(s, "$1:00")
+        s = compactOffsetRegex.replace(s, "$1:$2")
+        return runCatching { OffsetDateTime.parse(s).toInstant() }
+            .recoverCatching { Instant.parse(s) }
+            .recoverCatching { java.time.LocalDateTime.parse(s).atOffset(wibOffset).toInstant() }
+            .getOrDefault(Instant.EPOCH)
     }
+
+    fun ms(iso: String): Long = parseInstantSafe(iso).toEpochMilli()
 
     fun msSnapshot(tanggal: String, jam: String = "08:00"): Long =
         ms("${tanggal}T${jam}:00+07:00")
@@ -118,30 +140,34 @@ object Formatters {
     }
 
     fun wibIso(iso: String): String {
-        if (!iso.contains("T")) return iso
+        val trimmed = iso.trim()
+        if (trimmed.length <= 10) return trimmed
         return try {
-            val odt = OffsetDateTime.parse(iso).withOffsetSameInstant(wibOffset)
-            odt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'+07:00'"))
+            parseInstantSafe(trimmed).atOffset(wibOffset).format(wibIsoFmt)
         } catch (_: Exception) {
-            iso
+            trimmed
         }
     }
 
     fun tanggal(iso: String): String {
         val s = wibIso(iso)
+        if (s.length < 10) return s
         val parts = s.substring(0, 10).split("-")
-        val y = parts[0].toInt()
-        val m = parts[1].toInt()
-        val d = parts[2].toInt()
+        if (parts.size < 3) return s
+        val y = parts[0].toIntOrNull() ?: return s
+        val m = parts[1].toIntOrNull()?.coerceIn(1, 12) ?: return s
+        val d = parts[2].toIntOrNull() ?: return s
         return "$d ${bulan[m - 1]} $y"
     }
 
-    fun jam(iso: String): String =
-        wibIso(iso).substring(11, 16).replace(":", ".")
+    fun jam(iso: String): String {
+        val s = wibIso(iso)
+        return if (s.length >= 16) s.substring(11, 16).replace(":", ".") else s
+    }
 
     fun waktu(iso: String): String {
         val s = wibIso(iso)
-        return "${tanggal(s)}, ${s.substring(11, 16).replace(":", ".")} WIB"
+        return if (s.length >= 16) "${tanggal(s)}, ${s.substring(11, 16).replace(":", ".")} WIB" else tanggal(s)
     }
 
     fun selisihHari(dari: String, sampai: String): Int {

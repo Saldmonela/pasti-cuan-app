@@ -28,7 +28,7 @@ npm run build  # next build
 
 ## Menjalankan Aplikasi Android (`android-app/`)
 
-Proyek Native Android berada di folder `android-app/` (Kotlin + Jetpack Compose, minSdk 26 / Android 8.0+, JDK 17+). Saat ini (Milestone M2) masih memakai mode simulasi lokal dengan data contoh di dalam aplikasi, sehingga belum memerlukan `.env.local` maupun kunci Supabase.
+Proyek Native Android berada di folder `android-app/` (Kotlin + Jetpack Compose, minSdk 26 / Android 8.0+, JDK 17+). Saat build, Gradle otomatis membaca `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_ANON_KEY` (kunci publik) dari `android-app/local.properties`, environment variable, atau `../.env.local`, dan menghubungkan aplikasi ke API produksi (`https://pasti-cuan-app.vercel.app`) atau ke server lokal via override `PASTI_CUAN_API_URL_DEBUG`.
 
 1. Buka folder **`android-app/`** (bukan root repo) di **Android Studio**, tunggu Gradle sync selesai (`local.properties` berisi `sdk.dir` akan dibuat otomatis), lalu tekan **Run**.
 2. Atau jalankan lewat terminal (pastikan `JAVA_HOME` mengarah ke JDK 17+ dan Android SDK sudah terpasang):
@@ -38,6 +38,11 @@ cd android-app
 ./gradlew testDebugUnitTest   # Windows: .\gradlew.bat testDebugUnitTest
 ./gradlew assembleDebug       # Windows: .\gradlew.bat assembleDebug
 ```
+
+Untuk mengetes APK terhadap backend Next.js lokal di emulator (`http://localhost:3000`):
+1. Jalankan `npm run dev -- -H 0.0.0.0` di root repo (memakai `.env.local` proyek Supabase).
+2. Teruskan port ke emulator dengan `adb reverse tcp:3000 tcp:3000`.
+3. Isi `PASTI_CUAN_API_URL_DEBUG=http://localhost:3000` di `android-app/local.properties` (jangan di-commit; hapus kembali sebelum build APK untuk HP fisik agar mengarah ke `https://pasti-cuan-app.vercel.app`).
 
 File `.apk` hasil build (serta `local.properties`, `*.jks`, dan `*.keystore`) diabaikan oleh `.gitignore`. Jika ingin membagikan `.apk` ke anggota lain, unggah lewat **GitHub Releases** atau kirim langsung; aturan penamaan & naik versi `.apk` mengikuti [`GEMINI.md`](GEMINI.md).
 

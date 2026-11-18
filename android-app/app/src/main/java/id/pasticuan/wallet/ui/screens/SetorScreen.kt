@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,6 +58,7 @@ import id.pasticuan.wallet.ui.state.AppUiState
 import id.pasticuan.wallet.ui.state.AppViewModel
 import id.pasticuan.wallet.ui.theme.PastiCuanTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 @Composable
@@ -69,6 +71,7 @@ fun SetorScreen(
     val clipboard = LocalClipboardManager.current
     val data = state.data ?: return
     val saya = state.saya ?: return
+    val scope = rememberCoroutineScope()
 
     var jumlah by rememberSaveable { mutableStateOf("") }
     var tanggalTransfer by rememberSaveable { mutableStateOf(state.hariIni) }
@@ -87,7 +90,7 @@ fun SetorScreen(
     }
 
     val pending = state.menunggu.firstOrNull { it.anggotaId == saya.id && it.jenis == Jenis.SETOR }
-    val nonaktif = state.offline || pending != null
+    val nonaktif = state.offline || pending != null || state.sedangMengirim
     val walletPool = data.pengaturan.alamatWalletPool
     val pengelolaNama = data.anggota.firstOrNull { it.peran == Peran.PENGELOLA && it.aktif }?.nama
         ?: data.anggota.firstOrNull { it.peran == Peran.PENGELOLA }?.nama
@@ -461,7 +464,7 @@ fun SetorScreen(
 
                     Spacer(Modifier.height(18.dp))
                     PastiCuanButton(
-                        text = "Ajukan setoran",
+                        text = if (state.sedangMengirim) "Mengirim…" else "Ajukan setoran",
                         enabled = !nonaktif,
                         onClick = {
                             val n = Formatters.parseAngka(jumlah)
@@ -484,8 +487,10 @@ fun SetorScreen(
                                 ok = false
                             }
                             if (ok && n != null) {
-                                val gagal = viewModel.ajukanSetor(n, tanggalTransfer, bukti.trim(), catatan.trim())
-                                if (gagal != null) errForm = gagal
+                                scope.launch {
+                                    val gagal = viewModel.ajukanSetor(n, tanggalTransfer, bukti.trim(), catatan.trim())
+                                    if (gagal != null) errForm = gagal
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()

@@ -40,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -87,6 +88,7 @@ import id.pasticuan.wallet.ui.state.AppUiState
 import id.pasticuan.wallet.ui.state.AppViewModel
 import id.pasticuan.wallet.ui.theme.ModeTema
 import id.pasticuan.wallet.ui.theme.PastiCuanTheme
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -512,6 +514,7 @@ fun TransaksiScreen(
     val c = PastiCuanTheme.colors
     val data = state.data ?: return
     val saya = state.saya ?: return
+    val scope = rememberCoroutineScope()
 
     var cakupan by rememberSaveable { mutableStateOf(CakupanTx.SEMUA) }
     var filter by rememberSaveable { mutableStateOf(FilterTx.SEMUA) }
@@ -764,11 +767,14 @@ fun TransaksiScreen(
                         modifier = Modifier.weight(1f)
                     )
                     PastiCuanButton(
-                        text = "Ya, batalkan",
+                        text = if (state.sedangMengirim) "Membatalkan…" else "Ya, batalkan",
                         isDanger = true,
+                        enabled = !state.sedangMengirim,
                         onClick = {
-                            viewModel.batalkanPermintaan(p.id)
-                            targetBatal = null
+                            scope.launch {
+                                viewModel.batalkanPermintaan(p.id)
+                                targetBatal = null
+                            }
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -1094,6 +1100,7 @@ private val DAFTAR_ISTILAH = listOf(
     "Permintaan" to "Pengajuan setor atau tarik dari investor, diproses pengelola."
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LainnyaScreen(
     state: AppUiState,
@@ -1110,6 +1117,7 @@ fun LainnyaScreen(
         ?: "pengelola"
 
     var bukaTampilan by rememberSaveable { mutableStateOf(false) }
+    var konfirmasiKeluar by remember { mutableStateOf(false) }
 
     val teksTema = when (state.modeTema) {
         ModeTema.SISTEM -> "Mengikuti sistem"
@@ -1141,7 +1149,7 @@ fun LainnyaScreen(
                 judul = "Lainnya",
                 state = state,
                 showStamp = false,
-                onAvatarClick = { viewModel.bukaGantiAkun(true) }
+                onAvatarClick = { if (state.isSimulasiMode) viewModel.bukaGantiAkun(true) }
             )
         }
 
@@ -1334,6 +1342,24 @@ fun LainnyaScreen(
                     onClick = { viewModel.cekPembaruanAplikasi() }
                 )
 
+                if (!state.isSimulasiMode) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = c.hairline)
+                    MenuItemRow(
+                        icon = PastiCuanIcons.Refresh,
+                        judul = if (state.memuatUlang) "Menyegarkan data…" else "Segarkan data",
+                        subjudul = "Muat posisi dan pembacaan wallet terbaru dari server",
+                        onClick = { if (!state.memuatUlang) viewModel.segarkanManual() }
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = c.hairline)
+                    MenuItemRow(
+                        icon = PastiCuanIcons.Logout,
+                        judul = "Keluar",
+                        subjudul = "Keluar dari akun ${saya.email.ifBlank { saya.nama }}",
+                        onClick = { konfirmasiKeluar = true }
+                    )
+                }
+
                 if (state.isSimulasiMode) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = c.hairline)
                     MenuItemRow(
@@ -1408,6 +1434,55 @@ fun LainnyaScreen(
                 color = c.inkMuted,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
+        }
+    }
+
+    if (konfirmasiKeluar) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { konfirmasiKeluar = false },
+            sheetState = sheetState,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = glassSheetContainerColor(),
+            contentColor = c.ink,
+            scrimColor = glassSheetScrimColor()
+        ) {
+            ApplyLiquidSheetWindowBlur()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("Keluar dari akun?", style = PastiCuanTheme.typography.pageTitle.copy(fontSize = 19.sp), color = c.ink)
+                Text(
+                    text = "Kamu perlu masuk lagi dengan akun Google untuk melihat data live Pasti Cuan.",
+                    style = PastiCuanTheme.typography.body.copy(fontSize = 15.sp),
+                    color = c.ink
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PastiCuanButton(
+                        text = "Batal",
+                        isPrimary = false,
+                        onClick = { konfirmasiKeluar = false },
+                        modifier = Modifier.weight(1f)
+                    )
+                    PastiCuanButton(
+                        text = "Keluar",
+                        isDanger = true,
+                        onClick = {
+                            konfirmasiKeluar = false
+                            viewModel.keluar()
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
         }
     }
 }

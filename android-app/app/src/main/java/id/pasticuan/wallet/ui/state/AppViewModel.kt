@@ -1,9 +1,26 @@
 package id.pasticuan.wallet.ui.state
 
 import android.app.Application
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import id.pasticuan.wallet.BuildConfig
+import id.pasticuan.wallet.data.local.LocalAppStore
+import id.pasticuan.wallet.data.remote.AnggotaCreateRequest
+import id.pasticuan.wallet.data.remote.AnggotaPatchRequest
+import id.pasticuan.wallet.data.remote.ApiResult
+import id.pasticuan.wallet.data.remote.ArusTandaiRequest
+import id.pasticuan.wallet.data.remote.PastiCuanApiClient
+import id.pasticuan.wallet.data.remote.PengaturanPatchRequest
+import id.pasticuan.wallet.data.remote.PermintaanCreateRequest
+import id.pasticuan.wallet.data.remote.PermintaanSelesaiRequest
+import id.pasticuan.wallet.data.remote.PosisiResponse
+import id.pasticuan.wallet.data.remote.SnapshotCreateRequest
+import id.pasticuan.wallet.data.remote.SnapshotPatchRequest
+import id.pasticuan.wallet.data.repository.PastiCuanRepository
 import id.pasticuan.wallet.domain.engine.OnchainSimulator
 import id.pasticuan.wallet.domain.engine.PoolEngine
 import id.pasticuan.wallet.domain.engine.SeedData
@@ -27,11 +44,13 @@ import id.pasticuan.wallet.domain.util.Formatters
 import id.pasticuan.wallet.ui.theme.ModeTema
 import id.pasticuan.wallet.ui.theme.PengaturanKaca
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -67,11 +86,18 @@ enum class AppRoute {
 
 data class AppUiState(
     val siap: Boolean = false,
-    val isSimulasiMode: Boolean = true,
+    val isSimulasiMode: Boolean = false,
+    val butuhMasuk: Boolean = false,
+    val sedangLogin: Boolean = false,
+    val pesanErrorAuth: String? = null,
+    val gagalMuat: String? = null,
+    val memuatUlang: Boolean = false,
+    val sedangMengirim: Boolean = false,
     val offline: Boolean = false,
     val currentRoute: AppRoute = AppRoute.BERANDA,
     val backStack: List<AppRoute> = emptyList(),
-    val sayaId: String = "salman",
+    val sayaId: String = "",
+    val versiData: String = "",
     val modeSatuan: ModeSatuan = ModeSatuan.USD,
     val modeTema: ModeTema = ModeTema.SISTEM,
     val kaca: PengaturanKaca = PengaturanKaca(),
@@ -79,7 +105,7 @@ data class AppUiState(
     val titik: List<TitikNilai> = emptyList(),
     val resmi: PoolEngine.HasilPool? = null,
     val hasil: PoolEngine.HasilPool? = null,
-    val sekarangMs: Long = Formatters.ms(SeedData.WAKTU_AWAL),
+    val sekarangMs: Long = System.currentTimeMillis(),
     val toastMessage: String? = null,
     val gantiAkunSheetTerbuka: Boolean = false
 ) {
@@ -92,7 +118,7 @@ data class AppUiState(
     val titikAkhir: TitikNilai? get() = titik.filter { !it.estimasi }.maxByOrNull { it.ms }
     val lamaLiveMenit: Long
         get() {
-            val akhirMs = hasil?.live?.ms ?: titikAkhir?.ms ?: return 0L
+            val akhirMs = hasil?.live?.ms ?: titikAkhir?.ms ?: return Long.MAX_VALUE
             return ((sekarangMs - akhirMs) / 60_000L).coerceAtLeast(0L)
         }
     val dataLama: Boolean
@@ -107,53 +133,112 @@ data class AppUiState(
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val localStore = LocalAppStore(application)
+    private val apiClient = PastiCuanApiClient(
+        apiBaseUrl = BuildConfig.API_BASE_URL,
+        supabaseUrl = BuildConfig.SUPABASE_URL,
+        supabaseAnonKey = BuildConfig.SUPABASE_ANON_KEY
+    )
+    private val repository = PastiCuanRepository(apiClient, localStore)
+
     private val _state = MutableStateFlow(AppUiState())
     val state: StateFlow<AppUiState> = _state.asStateFlow()
 
     private var simulator: OnchainSimulator? = null
+    private var pollingJob: Job? = null
+    private var lastFetchAtMs: Long = 0L
+    private var isForeground: Boolean = true
 
     init {
-        viewModelScope.launch {
-            val loaded = withContext(Dispatchers.Default) {
-                val json = getApplication<Application>().assets
-                    .open("harga_pasar.json")
-                    .bufferedReader()
-                    .use { it.readText() }
-                val s = OnchainSimulator(json)
-                val data = SeedData.buatDataAwal(s)
-                val est = s.titikEstimasi(data.snapshots, data.permintaan)
-                val livePts = s.semuaTitik()
-                val gabunganTitik = est + livePts
-                val nowMs = Formatters.ms(SeedData.WAKTU_AWAL)
-                val resmi = PoolEngine.hitungPool(
-                    anggota = data.anggota,
-                    snapshots = data.snapshots,
-                    permintaan = data.permintaan,
-                    set = data.pengaturan,
-                    arus = data.arus,
-                    titikReferensi = gabunganTitik
-                )
-                val hasil = PoolEngine.terapkanLive(
-                    h = resmi,
-                    anggota = data.anggota,
-                    snaps = data.snapshots,
-                    arus = data.arus,
-                    titik = gabunganTitik,
-                    sekarang = nowMs,
-                    set = data.pengaturan
-                )
-                InitResult(s, data, gabunganTitik, resmi, hasil)
-            }
-            simulator = loaded.sim
+        val (savedSatuan, savedTema, savedKaca) = localStore.loadUiPreferences()
+        _state.update { it.copy(modeSatuan = savedSatuan, modeTema = savedTema, kaca = savedKaca) }
+
+        if (repository.isLiveConfigured) {
+            mulaiModeLive()
+        } else {
+            viewModelScope.launch { mulaiModeSimulasi() }
+        }
+    }
+
+    private fun mulaiModeLive() {
+        if (!repository.hasSession()) {
             _state.update {
                 it.copy(
                     siap = true,
-                    data = loaded.data,
-                    titik = loaded.titik,
-                    resmi = loaded.resmi,
-                    hasil = loaded.hasil
+                    isSimulasiMode = false,
+                    butuhMasuk = true,
+                    gagalMuat = null,
+                    data = null,
+                    hasil = null,
+                    resmi = null
                 )
             }
+            return
+        }
+
+        viewModelScope.launch {
+            val cached = withContext(Dispatchers.IO) { repository.loadCachedPosisi() }
+            if (cached != null) {
+                terapkanPayloadLive(cached, offline = !isNetworkOnline())
+            }
+            refreshLive(force = true)
+            mulaiPollingForeground()
+        }
+    }
+
+    /** Dipakai bila user mengaktifkan Mode Prototype offline khusus debug / test, atau saat build tanpa env. */
+    fun aktifkanModeSimulasiLokal() {
+        pollingJob?.cancel()
+        viewModelScope.launch { mulaiModeSimulasi() }
+    }
+
+    private suspend fun mulaiModeSimulasi() {
+        val loaded = withContext(Dispatchers.Default) {
+            val json = getApplication<Application>().assets
+                .open("harga_pasar.json")
+                .bufferedReader()
+                .use { it.readText() }
+            val s = OnchainSimulator(json)
+            val data = SeedData.buatDataAwal(s)
+            val est = s.titikEstimasi(data.snapshots, data.permintaan)
+            val livePts = s.semuaTitik()
+            val gabunganTitik = est + livePts
+            val nowMs = Formatters.ms(SeedData.WAKTU_AWAL)
+            val resmi = PoolEngine.hitungPool(
+                anggota = data.anggota,
+                snapshots = data.snapshots,
+                permintaan = data.permintaan,
+                set = data.pengaturan,
+                arus = data.arus,
+                titikReferensi = gabunganTitik
+            )
+            val hasil = PoolEngine.terapkanLive(
+                h = resmi,
+                anggota = data.anggota,
+                snaps = data.snapshots,
+                arus = data.arus,
+                titik = gabunganTitik,
+                sekarang = nowMs,
+                set = data.pengaturan
+            )
+            InitResult(s, data, gabunganTitik, resmi, hasil, nowMs)
+        }
+        simulator = loaded.sim
+        _state.update {
+            it.copy(
+                siap = true,
+                isSimulasiMode = true,
+                butuhMasuk = false,
+                gagalMuat = null,
+                pesanErrorAuth = null,
+                offline = false,
+                sayaId = "salman",
+                sekarangMs = loaded.nowMs,
+                data = loaded.data,
+                titik = loaded.titik,
+                resmi = loaded.resmi,
+                hasil = loaded.hasil
+            )
         }
     }
 
@@ -162,8 +247,234 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val data: DataPool,
         val titik: List<TitikNilai>,
         val resmi: PoolEngine.HasilPool,
-        val hasil: PoolEngine.HasilPool
+        val hasil: PoolEngine.HasilPool,
+        val nowMs: Long
     )
+
+    private suspend fun terapkanPayloadLive(payload: PosisiResponse, offline: Boolean) {
+        val computed = withContext(Dispatchers.Default) {
+            val sortedTitik = payload.titik.sortedBy { it.ms }
+            val nowMs = if (payload.sekarang > 0L) payload.sekarang else System.currentTimeMillis()
+            val resmi = PoolEngine.hitungPool(
+                anggota = payload.data.anggota,
+                snapshots = payload.data.snapshots,
+                permintaan = payload.data.permintaan,
+                set = payload.data.pengaturan,
+                arus = payload.data.arus,
+                titikReferensi = sortedTitik
+            )
+            val hasil = PoolEngine.terapkanLive(
+                h = resmi,
+                anggota = payload.data.anggota,
+                snaps = payload.data.snapshots,
+                arus = payload.data.arus,
+                titik = sortedTitik,
+                sekarang = nowMs,
+                set = payload.data.pengaturan
+            )
+            Triple(sortedTitik, resmi, hasil) to nowMs
+        }
+        val (triple, nowMs) = computed
+        val (sortedTitik, resmi, hasil) = triple
+        val sayaId = payload.saya?.id ?: _state.value.sayaId
+        val peranSaya = payload.saya?.peran ?: payload.data.anggota.firstOrNull { it.id == sayaId }?.peran
+
+        _state.update { cur ->
+            val routeAman = if (cur.currentRoute.parentTab == AppRoute.KELOLA && peranSaya != Peran.PENGELOLA) {
+                AppRoute.BERANDA
+            } else cur.currentRoute
+            cur.copy(
+                siap = true,
+                isSimulasiMode = false,
+                butuhMasuk = false,
+                sedangLogin = false,
+                pesanErrorAuth = null,
+                gagalMuat = null,
+                memuatUlang = false,
+                offline = offline,
+                sayaId = sayaId,
+                versiData = payload.versiData,
+                sekarangMs = nowMs,
+                data = payload.data,
+                titik = sortedTitik,
+                resmi = resmi,
+                hasil = hasil,
+                currentRoute = routeAman,
+                backStack = if (routeAman != cur.currentRoute) emptyList() else cur.backStack
+            )
+        }
+    }
+
+    // ---------- Auth Google PKCE & Siklus Hidup ----------
+
+    fun buatUrlLoginGoogle(): String {
+        _state.update { it.copy(pesanErrorAuth = null) }
+        return repository.beginGoogleSignIn()
+    }
+
+    fun tanganiCallbackLogin(uri: Uri) {
+        if (uri.scheme != "pasticuan" || uri.host != "auth-callback") return
+        viewModelScope.launch {
+            _state.update { it.copy(sedangLogin = true, pesanErrorAuth = null) }
+            when (val res = repository.handleAuthCallback(uri)) {
+                is ApiResult.Ok -> {
+                    lastFetchAtMs = System.currentTimeMillis()
+                    terapkanPayloadLive(res.data, offline = false)
+                    mulaiPollingForeground()
+                }
+                is ApiResult.Err -> {
+                    _state.update {
+                        it.copy(
+                            siap = true,
+                            butuhMasuk = true,
+                            sedangLogin = false,
+                            pesanErrorAuth = res.pesan
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun setAppForeground(foreground: Boolean) {
+        isForeground = foreground
+        val cur = _state.value
+        if (cur.isSimulasiMode || cur.butuhMasuk || !repository.hasSession()) return
+        if (foreground) {
+            val elapsed = System.currentTimeMillis() - lastFetchAtMs
+            if (elapsed > 15_000L) {
+                viewModelScope.launch { refreshLive(force = false) }
+            }
+            mulaiPollingForeground()
+        } else {
+            pollingJob?.cancel()
+            pollingJob = null
+        }
+    }
+
+    private fun mulaiPollingForeground() {
+        pollingJob?.cancel()
+        if (!isForeground || _state.value.isSimulasiMode || _state.value.butuhMasuk) return
+        pollingJob = viewModelScope.launch {
+            while (isActive) {
+                delay(60_000L)
+                if (isForeground && !_state.value.isSimulasiMode && !_state.value.butuhMasuk) {
+                    refreshLive(force = false)
+                }
+            }
+        }
+    }
+
+    suspend fun refreshLive(force: Boolean = true) {
+        if (_state.value.isSimulasiMode || !repository.isLiveConfigured) return
+        if (!repository.hasSession()) {
+            _state.update { it.copy(siap = true, butuhMasuk = true, memuatUlang = false) }
+            return
+        }
+        if (force) {
+            _state.update { it.copy(memuatUlang = true) }
+        }
+        when (val res = repository.fetchPosisi()) {
+            is ApiResult.Ok -> {
+                lastFetchAtMs = System.currentTimeMillis()
+                terapkanPayloadLive(res.data, offline = false)
+            }
+            is ApiResult.Err -> {
+                if (res.statusCode == 401 || res.statusCode == 403) {
+                    pollingJob?.cancel()
+                    _state.update {
+                        it.copy(
+                            siap = true,
+                            butuhMasuk = true,
+                            sedangLogin = false,
+                            memuatUlang = false,
+                            gagalMuat = null,
+                            pesanErrorAuth = res.pesan,
+                            data = null,
+                            hasil = null,
+                            resmi = null
+                        )
+                    }
+                    return
+                }
+
+                val cur = _state.value
+                val punyaData = cur.data != null && cur.hasil != null
+                if (punyaData) {
+                    _state.update {
+                        it.copy(
+                            siap = true,
+                            memuatUlang = false,
+                            offline = res.isNetworkError || !isNetworkOnline()
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(
+                            siap = true,
+                            memuatUlang = false,
+                            offline = res.isNetworkError || !isNetworkOnline(),
+                            gagalMuat = res.pesan
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun segarkanManual() {
+        viewModelScope.launch { refreshLive(force = true) }
+    }
+
+    fun keluar() {
+        if (_state.value.isSimulasiMode) {
+            if (repository.isLiveConfigured) {
+                _state.update {
+                    it.copy(
+                        isSimulasiMode = false,
+                        butuhMasuk = true,
+                        data = null,
+                        hasil = null,
+                        resmi = null,
+                        currentRoute = AppRoute.BERANDA,
+                        backStack = emptyList()
+                    )
+                }
+            }
+            return
+        }
+        pollingJob?.cancel()
+        viewModelScope.launch {
+            repository.logout()
+            _state.update {
+                it.copy(
+                    siap = true,
+                    butuhMasuk = true,
+                    sedangLogin = false,
+                    pesanErrorAuth = null,
+                    gagalMuat = null,
+                    memuatUlang = false,
+                    offline = false,
+                    sayaId = "",
+                    versiData = "",
+                    data = null,
+                    titik = emptyList(),
+                    hasil = null,
+                    resmi = null,
+                    currentRoute = AppRoute.BERANDA,
+                    backStack = emptyList()
+                )
+            }
+        }
+    }
+
+    private fun isNetworkOnline(): Boolean {
+        val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return true
+        val net = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(net) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
 
     private fun recompute(newData: DataPool) {
         val s = _state.value
@@ -190,7 +501,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun seri(rentang: Rentang, anggotaId: String? = null): PoolEngine.Seri {
         val s = _state.value
         val d = s.data ?: return PoolEngine.Seri(if (anggotaId != null) "saya" else "pool", emptyList(), 0)
-        val h = s.hasil ?: return PoolEngine.Seri(if (anggotaId != null) "saya" else "pool", emptyList(), 0)
+        val h = s.resmi ?: s.hasil ?: return PoolEngine.Seri(if (anggotaId != null) "saya" else "pool", emptyList(), 0)
         val ctx = PoolEngine.KonteksSeri(
             h = h,
             anggota = d.anggota,
@@ -230,26 +541,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setModeSatuan(mode: ModeSatuan) {
-        _state.update { it.copy(modeSatuan = mode) }
+        _state.update { cur ->
+            localStore.saveUiPreferences(mode, cur.modeTema, cur.kaca)
+            cur.copy(modeSatuan = mode)
+        }
     }
 
     fun setModeTema(tema: ModeTema) {
-        _state.update { it.copy(modeTema = tema) }
+        _state.update { cur ->
+            localStore.saveUiPreferences(cur.modeSatuan, tema, cur.kaca)
+            cur.copy(modeTema = tema)
+        }
     }
 
     fun updateKaca(transform: (PengaturanKaca) -> PengaturanKaca) {
-        _state.update { it.copy(kaca = transform(it.kaca)) }
+        _state.update { cur ->
+            val updated = transform(cur.kaca)
+            localStore.saveUiPreferences(cur.modeSatuan, cur.modeTema, updated)
+            cur.copy(kaca = updated)
+        }
     }
 
     fun setOfflineSimulasi(offline: Boolean) {
+        if (!_state.value.isSimulasiMode) return
         _state.update { it.copy(offline = offline) }
     }
 
     fun bukaGantiAkun(terbuka: Boolean) {
+        if (!_state.value.isSimulasiMode) return
         _state.update { it.copy(gantiAkunSheetTerbuka = terbuka) }
     }
 
     fun pilihAkunSimulasi(id: String) {
+        if (!_state.value.isSimulasiMode) return
         val cur = _state.value
         val targetAnggota = cur.data?.anggota?.firstOrNull { it.id == id } ?: return
         val nextRoute = if (cur.currentRoute.parentTab == AppRoute.KELOLA && targetAnggota.peran != Peran.PENGELOLA) {
@@ -275,13 +599,56 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cekPembaruanAplikasi() {
-        tampilkanToast("Aplikasi sudah versi terbaru (v${BuildConfig.VERSION_NAME} · Mode Simulasi M2).")
+        val labelMode = if (_state.value.isSimulasiMode) "Mode Simulasi" else "Live"
+        tampilkanToast("Aplikasi sudah versi terbaru (v${BuildConfig.VERSION_NAME} · $labelMode).")
+    }
+
+    private suspend fun <T> jalankanMutasiLive(block: suspend () -> ApiResult<T>): ApiResult<T> {
+        _state.update { it.copy(sedangMengirim = true) }
+        return try {
+            val res = block()
+            if (res is ApiResult.Ok) {
+                refreshLive(force = false)
+            } else if (res is ApiResult.Err && (res.statusCode == 401 || res.statusCode == 403)) {
+                pollingJob?.cancel()
+                _state.update {
+                    it.copy(
+                        butuhMasuk = true,
+                        pesanErrorAuth = res.pesan,
+                        data = null,
+                        hasil = null,
+                        resmi = null
+                    )
+                }
+            }
+            res
+        } finally {
+            _state.update { it.copy(sedangMengirim = false) }
+        }
     }
 
     // ---------- Investor: Setor / Tarik / Batal ----------
 
-    fun ajukanSetor(jumlahUsd: Double, tanggalTransfer: String, bukti: String?, catatan: String?): String? {
+    suspend fun ajukanSetor(jumlahUsd: Double, tanggalTransfer: String, bukti: String?, catatan: String?): String? {
         val s = _state.value
+        if (!s.isSimulasiMode) {
+            val req = PermintaanCreateRequest(
+                jenis = Jenis.SETOR,
+                jumlahUsd = jumlahUsd,
+                tanggalTransfer = tanggalTransfer,
+                buktiTransaksi = bukti?.trim()?.takeIf { it.isNotEmpty() },
+                catatan = catatan?.trim()?.takeIf { it.isNotEmpty() }
+            )
+            return when (val res = jalankanMutasiLive { repository.ajukanPermintaan(req) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("Permintaan setoran ${Formatters.usd(jumlahUsd)} terkirim. Pengelola akan mengonfirmasi setelah dana diterima.")
+                    navigateTo(AppRoute.TRANSAKSI, isTab = true)
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
         val d = s.data ?: return "Data belum siap."
         val saya = s.saya ?: return "Sesi tidak ditemukan."
         if (s.menunggu.any { it.anggotaId == saya.id && it.jenis == Jenis.SETOR }) {
@@ -315,8 +682,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
-    fun ajukanTarik(jumlahUsd: Double, alamatTujuan: String?, catatan: String?): String? {
+    suspend fun ajukanTarik(jumlahUsd: Double, alamatTujuan: String?, catatan: String?): String? {
         val s = _state.value
+        if (!s.isSimulasiMode) {
+            val req = PermintaanCreateRequest(
+                jenis = Jenis.TARIK,
+                jumlahUsd = jumlahUsd,
+                alamatWalletTujuan = alamatTujuan?.trim()?.takeIf { it.isNotEmpty() },
+                catatan = catatan?.trim()?.takeIf { it.isNotEmpty() },
+                versiData = s.versiData.takeIf { it.isNotBlank() }
+            )
+            return when (val res = jalankanMutasiLive { repository.ajukanPermintaan(req) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("Permintaan tarik ${Formatters.usd(jumlahUsd)} terkirim. Status: menunggu pengelola.")
+                    navigateTo(AppRoute.TRANSAKSI, isTab = true)
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
         val d = s.data ?: return "Data belum siap."
         val saya = s.saya ?: return "Sesi tidak ditemukan."
         if (s.menunggu.any { it.anggotaId == saya.id && it.jenis == Jenis.TARIK }) {
@@ -349,16 +734,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
-    fun batalkanPermintaan(permintaanId: String) {
+    suspend fun batalkanPermintaan(permintaanId: String): String? {
         val s = _state.value
-        val d = s.data ?: return
-        val saya = s.saya ?: return
-        val target = d.permintaan.firstOrNull { it.id == permintaanId } ?: return
-        if (target.anggotaId != saya.id || target.status != StatusPermintaan.MENUNGGU) return
+        val d = s.data ?: return "Data belum siap."
+        val target = d.permintaan.firstOrNull { it.id == permintaanId }
+        val labelJenis = if (target?.jenis == Jenis.SETOR) "setoran" else "penarikan"
+
+        if (!s.isSimulasiMode) {
+            return when (val res = jalankanMutasiLive { repository.batalkanPermintaan(permintaanId) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("Permintaan $labelJenis dibatalkan.")
+                    null
+                }
+                is ApiResult.Err -> {
+                    tampilkanToast(res.pesan)
+                    res.pesan
+                }
+            }
+        }
+
+        val saya = s.saya ?: return "Sesi tidak ditemukan."
+        if (target == null || target.anggotaId != saya.id || target.status != StatusPermintaan.MENUNGGU) return null
         val updated = d.permintaan.map {
             if (it.id == permintaanId) it.copy(status = StatusPermintaan.DIBATALKAN) else it
         }
-        val labelJenis = if (target.jenis == Jenis.SETOR) "setoran" else "penarikan"
         val logBaru = LogAudit(
             id = "log-${UUID.randomUUID().toString().take(6)}",
             tabel = "permintaan",
@@ -371,11 +770,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         )
         recompute(d.copy(permintaan = updated, log = listOf(logBaru) + d.log))
         tampilkanToast("Permintaan $labelJenis dibatalkan.")
+        return null
     }
 
     // ---------- Pengelola: Permintaan (Selesai Manual & Tolak — US-03B / US-04B) ----------
 
-    fun selesaikanPermintaanManual(
+    suspend fun selesaikanPermintaanManual(
         permintaanId: String,
         tanggalEfektif: String,
         jumlahFinalUsd: Double,
@@ -384,10 +784,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     ): String? {
         val s = _state.value
         val d = s.data ?: return "Data belum siap."
-        val saya = s.saya ?: return "Sesi tidak ditemukan."
-        val target = d.permintaan.firstOrNull { it.id == permintaanId && it.status == StatusPermintaan.MENUNGGU }
-            ?: return "Permintaan ini sudah diproses."
+        val target = d.permintaan.firstOrNull { it.id == permintaanId }
+        val namaPemilik = target?.let { t -> d.anggota.firstOrNull { it.id == t.anggotaId }?.nama ?: t.anggotaId } ?: ""
+        val labelJenis = if (target?.jenis == Jenis.SETOR) "Setoran" else "Penarikan"
 
+        if (!s.isSimulasiMode) {
+            val req = PermintaanSelesaiRequest(
+                tanggalEfektif = tanggalEfektif,
+                jumlahFinalUsd = jumlahFinalUsd,
+                buktiTransaksi = bukti?.trim()?.takeIf { it.isNotEmpty() },
+                alasan = alasan?.trim()?.takeIf { it.isNotEmpty() }
+            )
+            return when (val res = jalankanMutasiLive { repository.selesaikanPermintaan(permintaanId, req) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("$labelJenis $namaPemilik ${Formatters.usd(jumlahFinalUsd)} selesai. Semua posisi sudah diperbarui.")
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
+        val saya = s.saya ?: return "Sesi tidak ditemukan."
+        if (target == null || target.status != StatusPermintaan.MENUNGGU) {
+            return "Permintaan ini sudah diproses."
+        }
         if (d.snapshots.none { it.tanggal == tanggalEfektif }) {
             return "Belum ada saldo untuk ${Formatters.tanggal(tanggalEfektif)}. Isi saldo tanggal itu dulu."
         }
@@ -409,7 +829,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             } else it
         }
 
-        val namaPemilik = d.anggota.firstOrNull { it.id == target.anggotaId }?.nama ?: target.anggotaId
         if (target.jenis == Jenis.TARIK) {
             val uji = PoolEngine.hitungPool(d.anggota, d.snapshots, updatedPermintaan, d.pengaturan, d.arus, s.titik)
             if (uji.cek.penyebab.any { it.startsWith("Penarikan $namaPemilik") }) {
@@ -418,7 +837,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        val labelJenis = if (target.jenis == Jenis.SETOR) "Setoran" else "Penarikan"
         val logBaru = LogAudit(
             id = "log-${UUID.randomUUID().toString().take(6)}",
             tabel = "permintaan",
@@ -434,16 +852,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
-    fun tolakPermintaan(permintaanId: String, alasan: String): String? {
+    suspend fun tolakPermintaan(permintaanId: String, alasan: String): String? {
         val s = _state.value
         val d = s.data ?: return "Data belum siap."
-        val saya = s.saya ?: return "Sesi tidak ditemukan."
         val bersihAlasan = alasan.trim()
         if (bersihAlasan.isEmpty()) return "Alasan penolakan wajib diisi."
-        val target = d.permintaan.firstOrNull { it.id == permintaanId && it.status == StatusPermintaan.MENUNGGU }
-            ?: return "Permintaan ini sudah diproses."
-        val namaPemilik = d.anggota.firstOrNull { it.id == target.anggotaId }?.nama ?: target.anggotaId
+        val target = d.permintaan.firstOrNull { it.id == permintaanId }
+        val namaPemilik = target?.let { t -> d.anggota.firstOrNull { it.id == t.anggotaId }?.nama ?: t.anggotaId } ?: "Anggota"
 
+        if (!s.isSimulasiMode) {
+            return when (val res = jalankanMutasiLive { repository.tolakPermintaan(permintaanId, bersihAlasan) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("Permintaan $namaPemilik ditolak.")
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
+        val saya = s.saya ?: return "Sesi tidak ditemukan."
+        if (target == null || target.status != StatusPermintaan.MENUNGGU) {
+            return "Permintaan ini sudah diproses."
+        }
         val updated = d.permintaan.map {
             if (it.id == permintaanId) {
                 it.copy(
@@ -471,7 +901,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Pengelola: Arus Onchain (US-13 — 4 Mode + Batal Tandai) ----------
 
-    fun prosesArusOnchain(
+    suspend fun prosesArusOnchain(
         arusIds: List<String>,
         mode: String, // "cocok" | "buat" | "biaya" | "bukan_arus"
         permintaanId: String? = null,
@@ -480,6 +910,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         alasanSelisih: String? = null
     ): String? {
         val s = _state.value
+        if (!s.isSimulasiMode) {
+            val statusServer = if (mode == "cocok") "dicocokkan" else mode
+            val req = ArusTandaiRequest(
+                ids = arusIds,
+                status = statusServer,
+                permintaanId = if (mode == "cocok") permintaanId else null,
+                anggotaId = if (mode == "buat") anggotaId else null,
+                catatan = if (mode == "biaya" || mode == "bukan_arus") catatan?.trim() else null,
+                alasanSelisih = if (mode == "cocok" || mode == "buat") alasanSelisih?.trim()?.takeIf { it.isNotEmpty() } else null
+            )
+            return when (val res = jalankanMutasiLive { repository.tandaiArus(req) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast(res.data)
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
         val d = s.data ?: return "Data belum siap."
         val saya = s.saya ?: return "Sesi tidak ditemukan."
         val pilih = d.arus.filter { it.id in arusIds }
@@ -619,11 +1068,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
-    fun batalTandaiArus(arusId: String): String? {
+    suspend fun batalTandaiArus(arusId: String): String? {
         val s = _state.value
         val d = s.data ?: return "Data belum siap."
+        val target = d.arus.firstOrNull { it.id == arusId }
+
+        if (!s.isSimulasiMode) {
+            return when (val res = jalankanMutasiLive { repository.batalTandaiArus(arusId) }) {
+                is ApiResult.Ok -> {
+                    val ket = target?.let { Formatters.waktu(it.waktu) } ?: "transfer"
+                    tampilkanToast("Penandaan transfer $ket dibatalkan.")
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
         val saya = s.saya ?: return "Sesi tidak ditemukan."
-        val target = d.arus.firstOrNull { it.id == arusId } ?: return "Transfer tidak ditemukan."
+        if (target == null) return "Transfer tidak ditemukan."
         if (target.status == StatusArus.BELUM) return "Transfer ini belum ditandai."
 
         val snapMengunci = d.snapshots.firstOrNull {
@@ -666,7 +1128,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Pengelola: Snapshot Saldo (US-02A / US-02B) ----------
 
-    fun simpanSnapshot(
+    suspend fun simpanSnapshot(
         tanggal: String,
         nilaiUsd: Double,
         saldoSol: Double,
@@ -676,6 +1138,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         isUbah: Boolean
     ): String? {
         val s = _state.value
+        if (!s.isSimulasiMode) {
+            val res = if (isUbah) {
+                val req = SnapshotPatchRequest(
+                    nilaiUsd = nilaiUsd,
+                    saldoSol = saldoSol,
+                    feeLpDiklaimSol = feeLpSol,
+                    catatan = catatan?.trim()?.takeIf { it.isNotEmpty() },
+                    alasan = alasan?.trim()?.takeIf { it.isNotEmpty() },
+                    konfirmasiHitungUlang = true
+                )
+                jalankanMutasiLive { repository.ubahSnapshot(tanggal, req) }
+            } else {
+                val req = SnapshotCreateRequest(
+                    tanggal = tanggal,
+                    nilaiUsd = nilaiUsd,
+                    saldoSol = saldoSol,
+                    feeLpDiklaimSol = feeLpSol,
+                    catatan = catatan?.trim()?.takeIf { it.isNotEmpty() }
+                )
+                jalankanMutasiLive { repository.simpanSnapshot(req) }
+            }
+            return when (res) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("Saldo ${Formatters.tanggal(tanggal)} tersimpan. Semua posisi sudah diperbarui.")
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
         val d = s.data ?: return "Data belum siap."
         val saya = s.saya ?: return "Sesi tidak ditemukan."
         val nowIso = Formatters.isoWib(s.sekarangMs)
@@ -740,8 +1232,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
-    fun hapusSnapshot(tanggal: String): String? {
+    suspend fun hapusSnapshot(tanggal: String): String? {
         val s = _state.value
+        if (!s.isSimulasiMode) {
+            return when (val res = jalankanMutasiLive { repository.hapusSnapshot(tanggal) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("Saldo ${Formatters.tanggal(tanggal)} dihapus. Semua posisi sudah diperbarui.")
+                    null
+                }
+                is ApiResult.Err -> {
+                    tampilkanToast(res.pesan)
+                    res.pesan
+                }
+            }
+        }
+
         val d = s.data ?: return "Data belum siap."
         val saya = s.saya ?: return "Sesi tidak ditemukan."
         val existing = d.snapshots.firstOrNull { it.tanggal == tanggal } ?: return "Snapshot tidak ditemukan."
@@ -767,12 +1272,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Pengelola: Anggota (US-07B — Tanpa Ubah Email Eksisting) ----------
 
-    fun tambahAnggota(nama: String, email: String, peran: Peran, alamatList: List<String>): Map<String, String> {
+    suspend fun tambahAnggota(nama: String, email: String, peran: Peran, alamatList: List<String>): Map<String, String> {
         val s = _state.value
-        val d = s.data ?: return mapOf("form" to "Data belum siap.")
-        val saya = s.saya ?: return mapOf("form" to "Sesi tidak ditemukan.")
         val nm = nama.trim()
         val em = email.trim().lowercase()
+        val cleanedWallet = alamatList.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+
+        if (!s.isSimulasiMode) {
+            val req = AnggotaCreateRequest(nama = nm, email = em, peran = peran, alamatWallet = cleanedWallet)
+            return when (val res = jalankanMutasiLive { repository.tambahAnggota(req) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("$nm ditambahkan. Ia bisa masuk dengan akun Google $em.")
+                    emptyMap()
+                }
+                is ApiResult.Err -> {
+                    if (res.detail.isNotEmpty()) res.detail
+                    else mapOf("form" to res.pesan)
+                }
+            }
+        }
+
+        val d = s.data ?: return mapOf("form" to "Data belum siap.")
+        val saya = s.saya ?: return mapOf("form" to "Sesi tidak ditemukan.")
         val errs = mutableMapOf<String, String>()
 
         if (nm.length !in 2..40) errs["nama"] = "Nama harus 2 sampai 40 karakter."
@@ -781,7 +1302,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (!em.contains("@") || !em.contains(".")) errs["email"] = "Masukkan alamat email Google yang valid."
         else if (d.anggota.any { it.email.equals(em, ignoreCase = true) }) errs["email"] = "Email ini sudah terdaftar."
 
-        val cleanedWallet = alamatList.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (cleanedWallet.any { !Formatters.isSolanaAddress(it) }) {
             errs["alamat"] = "Alamat wallet Solana harus 32–44 karakter (huruf dan angka base58)."
         }
@@ -811,15 +1331,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return emptyMap()
     }
 
-    fun ubahWalletAnggota(anggotaId: String, alamatList: List<String>): String? {
+    suspend fun ubahWalletAnggota(anggotaId: String, alamatList: List<String>): String? {
         val s = _state.value
         val d = s.data ?: return "Data belum siap."
-        val saya = s.saya ?: return "Sesi tidak ditemukan."
         val target = d.anggota.firstOrNull { it.id == anggotaId } ?: return "Anggota tidak ditemukan."
         val cleaned = alamatList.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (cleaned.any { !Formatters.isSolanaAddress(it) }) {
             return "Alamat wallet Solana harus 32–44 karakter (huruf dan angka base58)."
         }
+
+        if (!s.isSimulasiMode) {
+            val req = AnggotaPatchRequest(alamatWallet = cleaned)
+            return when (val res = jalankanMutasiLive { repository.ubahAnggota(anggotaId, req) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("Alamat wallet ${target.nama} diperbarui.")
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
+        val saya = s.saya ?: return "Sesi tidak ditemukan."
         val updated = d.anggota.map {
             if (it.id == anggotaId) it.copy(alamatWallet = cleaned) else it
         }
@@ -838,11 +1370,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
-    fun setAktifAnggota(anggotaId: String, aktifBaru: Boolean): String? {
+    suspend fun setAktifAnggota(anggotaId: String, aktifBaru: Boolean): String? {
         val s = _state.value
         val d = s.data ?: return "Data belum siap."
-        val saya = s.saya ?: return "Sesi tidak ditemukan."
         val target = d.anggota.firstOrNull { it.id == anggotaId } ?: return "Anggota tidak ditemukan."
+
+        if (!s.isSimulasiMode) {
+            val req = AnggotaPatchRequest(aktif = aktifBaru)
+            return when (val res = jalankanMutasiLive { repository.ubahAnggota(anggotaId, req) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("${target.nama} ${if (!aktifBaru) "dinonaktifkan. Riwayatnya tetap tersimpan." else "diaktifkan lagi."}")
+                    null
+                }
+                is ApiResult.Err -> res.pesan
+            }
+        }
+
+        val saya = s.saya ?: return "Sesi tidak ditemukan."
         if (!aktifBaru) {
             val pos = s.hasil?.posisi?.firstOrNull { it.id == anggotaId }
             if (pos != null && pos.unit > 1e-9) {
@@ -869,10 +1413,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Pengelola: Pengaturan Pool (US-17) ----------
 
-    fun ubahPengaturan(baru: Pengaturan) {
+    suspend fun ubahPengaturan(baru: Pengaturan): String? {
         val s = _state.value
-        val d = s.data ?: return
-        val saya = s.saya ?: return
+        if (!s.isSimulasiMode) {
+            val req = PengaturanPatchRequest(
+                feePersen = baru.feePersen,
+                satuanDasarFee = baru.satuanDasarFee,
+                batasDataLamaHari = baru.batasDataLamaHari,
+                ambangLonjakanPersen = baru.ambangLonjakanPersen,
+                ambangLikuiditasTokenUsd = baru.ambangLikuiditasTokenUsd,
+                ambangDustUsd = baru.ambangDustUsd,
+                batasLiveLamaMenit = baru.batasLiveLamaMenit,
+                toleransiCocokPersen = baru.toleransiCocokPersen
+            )
+            return when (val res = jalankanMutasiLive { repository.ubahPengaturan(req) }) {
+                is ApiResult.Ok -> {
+                    tampilkanToast("Pengaturan tersimpan. Semua posisi sudah diperbarui.")
+                    null
+                }
+                is ApiResult.Err -> {
+                    tampilkanToast(res.pesan)
+                    res.pesan
+                }
+            }
+        }
+
+        val d = s.data ?: return "Data belum siap."
+        val saya = s.saya ?: return "Sesi tidak ditemukan."
         val lama = d.pengaturan
         val logBaru = LogAudit(
             id = "log-${UUID.randomUUID().toString().take(6)}",
@@ -886,5 +1453,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         )
         recompute(d.copy(pengaturan = baru, log = listOf(logBaru) + d.log))
         tampilkanToast("Pengaturan tersimpan. Semua posisi sudah diperbarui.")
+        return null
     }
 }

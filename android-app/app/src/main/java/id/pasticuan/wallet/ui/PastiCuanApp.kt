@@ -18,15 +18,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -40,6 +45,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.pasticuan.wallet.BuildConfig
 import id.pasticuan.wallet.domain.model.Peran
@@ -47,10 +55,13 @@ import id.pasticuan.wallet.domain.util.Formatters
 import id.pasticuan.wallet.ui.components.ApplyLiquidSheetWindowBlur
 import id.pasticuan.wallet.ui.components.FloatingPillNav
 import id.pasticuan.wallet.ui.components.GlassSurfaceSpec
+import id.pasticuan.wallet.ui.components.IconDot
 import id.pasticuan.wallet.ui.components.LocalAppBackdrop
 import id.pasticuan.wallet.ui.components.LocalScrollGlassState
 import id.pasticuan.wallet.ui.components.LocalSimulasiMode
 import id.pasticuan.wallet.ui.components.NavItemData
+import id.pasticuan.wallet.ui.components.PastiCuanButton
+import id.pasticuan.wallet.ui.components.PastiCuanCard
 import id.pasticuan.wallet.ui.components.PastiCuanIcons
 import id.pasticuan.wallet.ui.components.RoleChip
 import id.pasticuan.wallet.ui.components.SimulasiProtoPill
@@ -71,6 +82,7 @@ import id.pasticuan.wallet.ui.screens.KelolaSaldoScreen
 import id.pasticuan.wallet.ui.screens.KelolaScreen
 import id.pasticuan.wallet.ui.screens.LainnyaScreen
 import id.pasticuan.wallet.ui.screens.LogScreen
+import id.pasticuan.wallet.ui.screens.MasukScreen
 import id.pasticuan.wallet.ui.screens.PoolScreen
 import id.pasticuan.wallet.ui.screens.SetorScreen
 import id.pasticuan.wallet.ui.screens.TarikScreen
@@ -85,6 +97,19 @@ fun PastiCuanApp(
     viewModel: AppViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> viewModel.setAppForeground(true)
+                Lifecycle.Event.ON_STOP -> viewModel.setAppForeground(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     PastiCuanTheme(
         modeTema = state.modeTema,
@@ -93,12 +118,70 @@ fun PastiCuanApp(
         val c = PastiCuanTheme.colors
         val kaca = PastiCuanTheme.kaca
 
-        BackHandler(enabled = state.currentRoute != AppRoute.BERANDA || state.backStack.isNotEmpty()) {
+        BackHandler(enabled = !state.butuhMasuk && (state.currentRoute != AppRoute.BERANDA || state.backStack.isNotEmpty())) {
             viewModel.navigateBack()
         }
 
-        if (!state.siap || state.data == null || state.hasil == null) {
+        if (!state.siap) {
             SkeletonLoadingCards(count = 3)
+            return@PastiCuanTheme
+        }
+
+        if (state.butuhMasuk) {
+            MasukScreen(state = state, viewModel = viewModel)
+            return@PastiCuanTheme
+        }
+
+        if (state.data == null || state.hasil == null) {
+            if (state.gagalMuat != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(c.canvas)
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    PastiCuanCard {
+                        IconDot(PastiCuanIcons.AlertTriangle, size = 44.dp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "Data belum bisa dimuat.",
+                            style = PastiCuanTheme.typography.title,
+                            color = c.ink
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = state.gagalMuat ?: "Cek koneksi internet lalu coba lagi.",
+                            style = PastiCuanTheme.typography.caption,
+                            color = c.inkMuted
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            PastiCuanButton(
+                                text = "Keluar",
+                                isPrimary = false,
+                                enabled = !state.memuatUlang,
+                                onClick = { viewModel.keluar() },
+                                modifier = Modifier.weight(1f)
+                            )
+                            PastiCuanButton(
+                                text = if (state.memuatUlang) "Memuat…" else "Coba lagi",
+                                isPrimary = true,
+                                enabled = !state.memuatUlang,
+                                onClick = { viewModel.segarkanManual() },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            } else {
+                SkeletonLoadingCards(count = 3)
+            }
             return@PastiCuanTheme
         }
 
@@ -134,6 +217,7 @@ fun PastiCuanApp(
         val appBackdrop = rememberLayerBackdrop(onDraw = paintBackdrop)
         val (scrollGlass, nestedScrollConn) = rememberScrollGlassTracker(state.currentRoute)
         val blurThresholdPx = with(LocalDensity.current) { 8.dp.toPx() }
+        val pullState = rememberPullToRefreshState()
 
         CompositionLocalProvider(
             LocalAppBackdrop provides appBackdrop,
@@ -145,12 +229,7 @@ fun PastiCuanApp(
                     .fillMaxSize()
                     .background(c.canvas)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .layerBackdrop(appBackdrop)
-                        .nestedScroll(nestedScrollConn)
-                ) {
+                val kontenLayar: @Composable () -> Unit = {
                     when (state.currentRoute) {
                         AppRoute.BERANDA -> BerandaScreen(state = state, viewModel = viewModel)
                         AppRoute.POOL -> PoolScreen(state = state, viewModel = viewModel)
@@ -165,6 +244,40 @@ fun PastiCuanApp(
                         AppRoute.SETOR -> SetorScreen(state = state, viewModel = viewModel)
                         AppRoute.TARIK -> TarikScreen(state = state, viewModel = viewModel)
                         AppRoute.LOG -> LogScreen(state = state, viewModel = viewModel)
+                    }
+                }
+
+                if (!state.isSimulasiMode && state.currentRoute.showBottomNav) {
+                    PullToRefreshBox(
+                        isRefreshing = state.memuatUlang,
+                        onRefresh = { viewModel.segarkanManual() },
+                        state = pullState,
+                        indicator = {
+                            PullToRefreshDefaults.Indicator(
+                                state = pullState,
+                                isRefreshing = state.memuatUlang,
+                                containerColor = c.card,
+                                color = c.forestInk,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .statusBarsPadding()
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .layerBackdrop(appBackdrop)
+                            .nestedScroll(nestedScrollConn)
+                    ) {
+                        kontenLayar()
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .layerBackdrop(appBackdrop)
+                            .nestedScroll(nestedScrollConn)
+                    ) {
+                        kontenLayar()
                     }
                 }
 
@@ -267,7 +380,7 @@ fun PastiCuanApp(
         }
 
         // Lembar Bawah Pemilih Akun / Peran Simulasi (setara ProtoPanel di Web)
-        if (state.gantiAkunSheetTerbuka) {
+        if (state.gantiAkunSheetTerbuka && state.isSimulasiMode) {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             val data = state.data!!
             val hasil = state.hasil!!
@@ -293,7 +406,7 @@ fun PastiCuanApp(
                         color = c.ink
                     )
                     Text(
-                        text = "Mode Simulasi M2 (v${BuildConfig.VERSION_NAME}): uji seluruh tampilan Investor maupun Pengelola (Galih) secara lokal.",
+                        text = "Mode Simulasi (v${BuildConfig.VERSION_NAME}): uji seluruh tampilan Investor maupun Pengelola secara lokal.",
                         style = PastiCuanTheme.typography.caption,
                         color = c.inkMuted
                     )

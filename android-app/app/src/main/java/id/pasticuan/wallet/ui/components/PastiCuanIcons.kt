@@ -651,4 +651,35 @@ object PastiCuanIcons {
             horizontalLineTo(16f)
         }
     }
+
+    // Tabler IconBrandGoogle
+    val BrandGoogle: ImageVector by lazy {
+        strokeIcon("BrandGoogle") {
+            moveTo(20.945f, 11f)
+            arcTo(9f, 9f, 0f, true, false, 18.8f, 18.082f)
+            arcTo(8.94f, 8.94f, 0f, false, false, 21f, 12f)
+            horizontalLineTo(12f)
+        }
+    }
+
+    // Tabler IconLogout
+    val Logout: ImageVector by lazy {
+        strokeIcon("Logout") {
+            moveTo(14f, 8f)
+            verticalLineTo(6f)
+            arcTo(2f, 2f, 0f, false, false, 12f, 4f)
+            horizontalLineTo(5f)
+            arcTo(2f, 2f, 0f, false, false, 3f, 6f)
+            verticalLineTo(18f)
+            arcTo(2f, 2f, 0f, false, false, 5f, 20f)
+            horizontalLineTo(12f)
+            arcTo(2f, 2f, 0f, false, false, 14f, 18f)
+            verticalLineTo(16f)
+            moveTo(9f, 12f)
+            horizontalLineTo(21f)
+            lineTo(18f, 9f)
+            moveTo(18f, 15f)
+            lineTo(21f, 12f)
+        }
+    }
 }

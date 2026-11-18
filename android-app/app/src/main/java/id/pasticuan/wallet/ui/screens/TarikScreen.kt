@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +59,7 @@ import id.pasticuan.wallet.ui.state.AppRoute
 import id.pasticuan.wallet.ui.state.AppUiState
 import id.pasticuan.wallet.ui.state.AppViewModel
 import id.pasticuan.wallet.ui.theme.PastiCuanTheme
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.floor
 
@@ -73,6 +75,7 @@ fun TarikScreen(
     val resmi = state.resmi ?: hasil
     val saya = state.saya ?: return
     val pos = hasil.posisi.firstOrNull { it.id == saya.id } ?: return
+    val scope = rememberCoroutineScope()
 
     var jumlah by rememberSaveable { mutableStateOf("") }
     var alamat by rememberSaveable { mutableStateOf("") }
@@ -89,7 +92,7 @@ fun TarikScreen(
     val sim = if (n != null && n > 0.0 && !lewat) {
         PoolEngine.simulasiTarik(hasil, saya.id, n, data.pengaturan)
     } else null
-    val nonaktif = state.offline || cekGagal || pending != null || pos.netUsd <= 0.004
+    val nonaktif = state.offline || cekGagal || pending != null || pos.netUsd <= 0.004 || state.sedangMengirim
 
     FloatingSubScreenLayout(
         judul = "Tarik modal",
@@ -548,17 +551,20 @@ fun TarikScreen(
                         modifier = Modifier.weight(1f)
                     )
                     PastiCuanButton(
-                        text = "Ya, ajukan",
+                        text = if (state.sedangMengirim) "Mengirim…" else "Ya, ajukan",
                         isPrimary = true,
+                        enabled = !state.sedangMengirim,
                         onClick = {
                             val baseline = konfirmasiNet ?: pos.netUsd
                             if (abs(baseline - pos.netUsd) > 0.004) {
                                 konfirmasiNet = null
                                 errForm = "Angka baru saja diperbarui. Cek lagi simulasi kamu."
                             } else {
-                                val gagal = viewModel.ajukanTarik(n, alamat.trim(), catatan.trim())
-                                konfirmasiNet = null
-                                if (gagal != null) errForm = gagal
+                                scope.launch {
+                                    val gagal = viewModel.ajukanTarik(n, alamat.trim(), catatan.trim())
+                                    konfirmasiNet = null
+                                    if (gagal != null) errForm = gagal
+                                }
                             }
                         },
                         modifier = Modifier.weight(1f)

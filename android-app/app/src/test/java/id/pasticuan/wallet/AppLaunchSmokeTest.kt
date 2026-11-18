@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -22,11 +23,25 @@ class AppLaunchSmokeTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
+    private fun masukKeModePrototypeJikaDiLayarMasuk() {
+        composeRule.waitForIdle()
+        val diMasuk = runCatching {
+            composeRule.onNodeWithText("Masuk dengan Google").assertIsDisplayed()
+            true
+        }.getOrDefault(false)
+        if (diMasuk) {
+            composeRule.onNodeWithText("Buka mode prototype lokal (data contoh)").performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Pool").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.mainClock.advanceTimeBy(300)
+        composeRule.waitForIdle()
+    }
+
     @Test
     fun mainActivityFullGlassNavigationAndTogglesWorkCleanly() {
-        composeRule.waitForIdle()
-        composeRule.mainClock.advanceTimeBy(600)
-        composeRule.waitForIdle()
+        masukKeModePrototypeJikaDiLayarMasuk()
 
         // 1. Sub-layar Setor & Tarik (FloatingSubScreenLayout + FloatingBackButton)
         composeRule.onNodeWithText("Setor").performScrollTo().performClick()
@@ -85,9 +100,7 @@ class AppLaunchSmokeTest {
     @Test
     @Config(sdk = [31], qualifiers = "w412dp-h915dp-xxhdpi")
     fun mainActivityLaunchesOnApi31BlurFallback() {
-        composeRule.waitForIdle()
-        composeRule.mainClock.advanceTimeBy(600)
-        composeRule.waitForIdle()
+        masukKeModePrototypeJikaDiLayarMasuk()
         composeRule.onNodeWithText("Pool").performClick()
         composeRule.waitForIdle()
     }
