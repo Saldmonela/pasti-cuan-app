@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 // Inter di-host sendiri (bukan Google Fonts) supaya build tidak bergantung pada koneksi ke Google.
 import "@fontsource-variable/inter";
+import LiquidGlassRig from "@/components/LiquidGlassRig";
 import { StoreProvider } from "@/lib/store";
 import "./globals.css";
 
@@ -27,9 +28,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="id">
+    <html lang="id" suppressHydrationWarning>
       <body>
-        <StoreProvider>{children}</StoreProvider>
+        <StoreProvider>
+          <LiquidGlassRig />
+          {children}
+        </StoreProvider>
       </body>
     </html>
   );

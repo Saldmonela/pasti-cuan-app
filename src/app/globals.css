@@ -63,7 +63,9 @@ body {
 :focus-visible { outline: 2px solid var(--forest-ink); outline-offset: 2px; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+a, label, summary, [role="button"] { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
+.nav, .btn, .seg, .tabs, .back, .av, .lg-pref-rows { -webkit-user-select: none; user-select: none; }
 h1, h2, h3 { text-wrap: balance; margin: 0; }
 p { margin: 0; }
 
@@ -239,12 +241,12 @@ dialog.sheet::backdrop { background: rgb(14 15 12 / 0.45); }
 
 /* ---------- menu ---------- */
 .menu { list-style: none; margin: 0; padding: 0; }
-.menu a, .menu button { display: flex; align-items: center; gap: var(--s-md); width: 100%; min-height: 56px; padding: var(--s-sm) 0; background: none; border: 0; text-decoration: none; text-align: left; font-size: 15px; }
+.menu > li > a, .menu > li > button { display: flex; align-items: center; gap: var(--s-md); width: 100%; min-height: 56px; padding: var(--s-sm) 0; background: none; border: 0; text-decoration: none; text-align: left; font-size: 15px; }
 .menu li + li { border-top: 1px solid var(--hairline); }
 .menu .t { flex: 1; }
 .menu .t small { display: block; font-size: 12.5px; color: var(--ink-muted); }
 .menu .chev { color: var(--ink-muted); }
-.menu a:hover .t > span, .menu button:hover .t > span { text-decoration: underline; text-underline-offset: 3px; }
+.menu > li > a:hover .t > span, .menu > li > button:hover .t > span { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- prototype panel ---------- */
 .proto-btn { position: fixed; top: 12px; right: 12px; z-index: 40; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: var(--r-pill); border: 1px dashed var(--ink-muted); background: var(--card-white); font-size: 12.5px; font-weight: 600; }
@@ -278,3 +280,801 @@ dialog.sheet::backdrop { background: rgb(14 15 12 / 0.45); }
 .rekon { font-size: 12px; color: var(--ink-muted); margin-top: 6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .cap-est { font-size: 12px; color: var(--ink-muted); margin: -6px 0 10px; }
+
+/* ==========================================================================
+   WISE FOREST OBSIDIAN DARK MODE + APPLE iOS 26 LIQUID GLASS
+   - html[data-theme="dark"]: pemetaan semantik mode gelap tanpa layout shift.
+   - html[data-liquid-glass="on"]: kaca kristal netral (~35% vibrancy) + pegas kapsul.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+  scrollbar-color: #b7beb3 #e8ebe6;
+  --on-lime: #163300;
+  --card-edge: transparent;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  scrollbar-color: #353f32 #0c0f0b;
+  --lime-action: #9fe870;
+  --on-lime: #142d00;
+  --forest-ink: #a2e378;
+  --forest-wash: #222e1d;
+  --sage-canvas: #0c0f0b;
+  --card-white: #151914;
+  --card-edge: rgb(255 255 255 / 0.06);
+  --ink: #edf1eb;
+  --ink-muted: #9aa396;
+  --hairline: #252c23;
+  --gain: #5ce092;
+  --loss: #ff7d84;
+  --share-1: #6e786b;
+  --share-2: #535d50;
+  --share-3: #3d453b;
+  --share-4: #2b3229;
+  --nav-idle: #9aa396;
+  --nav-active-wash: #2e372b;
+  --gain-wash: #132b1e;
+  --loss-wash: #311619;
+  --warning-wash: #2d230d;
+  --warning-ink: #ffd466;
+  --field: #1e241c;
+  --skeleton: #20261e;
+
+  --shadow-float: 0 16px 36px -10px rgb(0 0 0 / 0.68);
+  --shadow-tooltip: 0 10px 24px -8px rgb(0 0 0 / 0.65);
+  --shadow-raised: 0 1px 3px rgb(0 0 0 / 0.35);
+  --shadow-sheet: 0 -16px 40px -12px rgb(0 0 0 / 0.68);
+}
+
+.card {
+  border: 1px solid var(--card-edge);
+}
+
+html[data-theme="dark"] ::selection {
+  background: var(--lime-action);
+  color: var(--on-lime);
+}
+html[data-theme="dark"] .av,
+html[data-theme="dark"] .nav .badge,
+html[data-theme="dark"] .btn.pri {
+  color: var(--on-lime);
+}
+html[data-theme="dark"] .btn.dark {
+  background: #252d23;
+  color: var(--ink);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+html[data-theme="dark"] .banner.dark {
+  background: #20261e;
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+}
+html[data-theme="dark"] .seg {
+  background: #0f130e;
+}
+html[data-theme="dark"] .seg button[aria-pressed="true"],
+html[data-theme="dark"] .seg button[aria-checked="true"],
+html[data-theme="dark"] .tabs button[aria-pressed="true"] {
+  background: #263d1a;
+  color: var(--lime-action);
+}
+html[data-theme="dark"] .tabs {
+  background: var(--card-white);
+  border: 1px solid var(--card-edge);
+}
+html[data-theme="dark"] .inp:focus-within {
+  background: #232a21;
+  border-color: var(--forest-ink);
+}
+html[data-theme="dark"] .inp.err {
+  background: #241719;
+  border-color: var(--loss);
+}
+html[data-theme="dark"] .inp.ro {
+  background: #10140f;
+}
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] dialog.sheet {
+  color-scheme: dark;
+  scrollbar-color: #353f32 #151914;
+}
+html[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.85;
+  cursor: pointer;
+}
+html[data-theme="dark"] .back {
+  background: var(--card-white);
+  border: 1px solid var(--card-edge);
+}
+
+/* Permukaan melayang saat Dark Mode aktif & Liquid Glass OFF */
+html[data-theme="dark"][data-liquid-glass="off"] .nav {
+  background: #1e241c;
+  border: 1px solid rgb(255 255 255 / 0.09);
+}
+html[data-theme="dark"][data-liquid-glass="off"] .nav a:hover,
+html[data-theme="dark"][data-liquid-glass="off"] .nav a[aria-current] {
+  color: var(--ink);
+}
+html[data-theme="dark"][data-liquid-glass="off"] .toast {
+  background: #21281f;
+  color: var(--ink);
+  border: 1px solid rgb(255 255 255 / 0.10);
+}
+html[data-theme="dark"][data-liquid-glass="off"] dialog.sheet {
+  background: #1a2018;
+  border-top: 1px solid rgb(255 255 255 / 0.10);
+}
+html[data-theme="dark"] dialog.sheet::backdrop {
+  background: rgb(4 6 3 / 0.62);
+}
+
+/* ---------- Accordion Tampilan & Switch di /lainnya ---------- */
+.acc-chev {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.acc-chev[data-open="true"] {
+  transform: rotate(90deg);
+}
+.lg-acc {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.2s ease;
+}
+.lg-acc[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.lg-acc-in {
+  min-height: 0;
+  overflow: hidden;
+}
+.lg-pref-rows {
+  padding: 2px 0 8px 48px;
+}
+@media (max-width: 480px) {
+  .lg-pref-rows {
+    padding-left: 12px;
+  }
+}
+.lg-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-md);
+  min-height: 52px;
+  padding: 10px 0;
+  border-top: 1px solid var(--hairline);
+  cursor: pointer;
+}
+.lg-pref-row.theme-row {
+  cursor: default;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.lg-pref-row.theme-row .seg {
+  display: flex;
+  width: 100%;
+}
+.lg-pref-row.theme-row .seg button {
+  flex: 1;
+  min-height: 34px;
+}
+.lg-pref-row.sub {
+  padding-left: 14px;
+}
+.lg-pref-row .t {
+  flex: 1;
+  min-width: 0;
+}
+.lg-pref-row .t > span {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.lg-pref-row .t > small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.lg-switch {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: #cfd6cb;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  transition: background-color 0.18s ease, opacity 0.18s ease;
+}
+html[data-theme="dark"] .lg-switch {
+  background: #2c3529;
+}
+.lg-switch[aria-checked="true"] {
+  background: #163300;
+}
+html[data-theme="dark"] .lg-switch[aria-checked="true"] {
+  background: var(--lime-action);
+}
+.lg-switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.lg-switch-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.24);
+  transform: translateX(0);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.18s ease;
+}
+html[data-theme="dark"] .lg-switch-thumb {
+  background: #b7c0b3;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.45);
+}
+.lg-switch[aria-checked="true"] .lg-switch-thumb {
+  transform: translateX(18px);
+  background: var(--lime-action);
+}
+html[data-theme="dark"] .lg-switch[aria-checked="true"] .lg-switch-thumb {
+  background: #142d00;
+}
+
+/* Sembunyikan elemen bantuan saat Liquid Glass OFF */
+.lg-prog-blur,
+.lg-nav-surface,
+.lg-nav-rim,
+.lg-slider {
+  display: none;
+}
+
+/* ---------- 1. Progressive Blur Atas Murni (tanpa kabut warna) ---------- */
+html[data-liquid-glass="on"] .lg-prog-blur {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 76px;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+html[data-liquid-glass="on"][data-lg-prog-blur="on"][data-lg-scrolled="true"] .lg-prog-blur {
+  opacity: 1;
+}
+html[data-liquid-glass="on"] .lg-prog-blur > span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  background: transparent;
+}
+html[data-liquid-glass="on"] .lg-prog-blur > .b1 {
+  height: 100%;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 52%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 52%, transparent 100%);
+}
+html[data-liquid-glass="on"] .lg-prog-blur > .b2 {
+  height: 80%;
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 46%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 46%, transparent 100%);
+}
+html[data-liquid-glass="on"] .lg-prog-blur > .b3 {
+  height: 58%;
+  -webkit-backdrop-filter: blur(11px);
+  backdrop-filter: blur(11px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 40%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 40%, transparent 100%);
+}
+html[data-liquid-glass="on"] .lg-prog-blur > .b4 {
+  height: 36%;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 36%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 36%, transparent 100%);
+}
+
+/* ---------- 2. Kapsul Indikator (.lg-slider) ---------- */
+html[data-liquid-glass="on"] .lg-slider {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  border-radius: var(--r-pill);
+  pointer-events: none;
+  will-change: transform, width, height;
+}
+html[data-liquid-glass="on"] .seg > .lg-slider,
+html[data-liquid-glass="on"] .tabs > .lg-slider {
+  z-index: 0;
+  transition:
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.26s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.2s ease,
+    opacity 0.18s ease,
+    background 0.22s ease,
+    box-shadow 0.22s ease;
+}
+html[data-liquid-glass="on"] .nav > .lg-slider {
+  transition:
+    opacity 0.15s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
+}
+
+/* ---------- 3. Navigasi Melayang (.nav) — Kaca Netral Kalem (~35% Vibrancy) ---------- */
+html[data-liquid-glass="on"] .nav {
+  --lg-x: 50%;
+  --lg-y: 50%;
+  --lg-alpha: 0;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  touch-action: pan-y;
+  transform-origin: center bottom;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+html[data-liquid-glass="on"] .nav > .lg-nav-surface {
+  display: block;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 0;
+  pointer-events: none;
+  transition: background 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
+}
+html[data-liquid-glass="on"] .nav::before,
+html[data-liquid-glass="on"] .nav::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--lg-alpha, 0);
+  transition: opacity 0.2s ease;
+}
+html[data-liquid-glass="on"] .nav::before {
+  z-index: 1;
+}
+html[data-liquid-glass="on"] .nav::after {
+  z-index: 3;
+  padding: 1.2px;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+html[data-liquid-glass="on"][data-lg-nav-compact="true"] .nav {
+  transform: scale(0.955) translateY(3px);
+}
+html[data-liquid-glass="on"] .nav:hover {
+  transform: scale(1) translateY(0);
+}
+html[data-liquid-glass="on"] .nav a {
+  z-index: 2;
+  transition: color 0.18s ease, transform 0.14s ease, opacity 0.16s ease;
+}
+html[data-liquid-glass="on"] .nav:not([data-lg-dragging="true"]) a:active {
+  transform: scale(0.94);
+}
+html[data-liquid-glass="on"] .nav a[aria-current] {
+  background: transparent;
+}
+
+/* Light Mode — Netral Bening */
+html:not([data-theme="dark"])[data-liquid-glass="on"] .nav > .lg-nav-surface {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.56) 0%, rgb(245 246 244 / 0.38) 100%);
+  border: 1px solid rgb(255 255 255 / 0.86);
+  outline: 1px solid rgb(0 0 0 / 0.07);
+  -webkit-backdrop-filter: blur(12px) saturate(106%) brightness(103%);
+  backdrop-filter: url(#ios26-bevel-lens) saturate(106%) brightness(103%);
+  box-shadow:
+    inset 0 1.5px 0.5px rgb(255 255 255 / 0.98),
+    inset 0 -1.5px 1px rgb(255 255 255 / 0.62),
+    0 16px 36px -10px rgb(0 0 0 / 0.20),
+    0 3px 10px -2px rgb(0 0 0 / 0.08);
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .nav::before {
+  background: radial-gradient(
+    64px circle at var(--lg-x) var(--lg-y),
+    rgb(255 255 255 / 0.42) 0%,
+    rgb(255 255 255 / 0.12) 40%,
+    transparent 68%
+  );
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .nav::after {
+  background: radial-gradient(
+    58px circle at var(--lg-x) var(--lg-y),
+    rgb(255 255 255 / 0.72) 0%,
+    rgb(255 255 255 / 0.18) 44%,
+    transparent 70%
+  );
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .nav a {
+  color: #414540;
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .nav a:hover {
+  color: var(--ink);
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .nav:not([data-lg-dragging="true"]) a[aria-current],
+html:not([data-theme="dark"])[data-liquid-glass="on"] .nav[data-lg-dragging="true"] a[data-pill-aim="true"] {
+  color: var(--ink);
+  font-weight: 700;
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .nav > .lg-slider {
+  background: linear-gradient(165deg, rgb(255 255 255 / 0.94) 0%, rgb(244 246 243 / 0.86) 100%);
+  border: 1px solid rgb(0 0 0 / 0.06);
+  box-shadow:
+    inset 0 1.5px 0 rgb(255 255 255 / 1),
+    0 4px 12px -3px rgb(0 0 0 / 0.14);
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"]:not([data-lg-perf="on"])
+  .nav
+  > .lg-slider[data-lifted="true"] {
+  z-index: 4;
+  background: linear-gradient(165deg, rgb(255 255 255 / 0.28) 0%, rgb(255 255 255 / 0.08) 100%);
+  border: 1px solid rgb(255 255 255 / 0.92);
+  outline: 1px solid rgb(0 0 0 / 0.09);
+  -webkit-backdrop-filter: saturate(125%) brightness(102%);
+  backdrop-filter: url(#ios26-pill-magnifier) saturate(128%) brightness(102%);
+  box-shadow:
+    inset 0 1.5px 1px rgb(255 255 255 / 1),
+    inset 0 -1.5px 2px rgb(255 255 255 / 0.72),
+    0 10px 24px -6px rgb(0 0 0 / 0.25);
+}
+
+/* Dark Mode — Netral Kristal (~35% Vibrancy) */
+html[data-theme="dark"][data-liquid-glass="on"] .nav > .lg-nav-surface {
+  background: linear-gradient(160deg, rgb(26 27 26 / 0.48) 0%, rgb(14 15 14 / 0.38) 100%);
+  border: 1px solid rgb(255 255 255 / 0.17);
+  -webkit-backdrop-filter: blur(12px) saturate(90%) brightness(106%);
+  backdrop-filter: url(#ios26-bevel-lens) saturate(90%) brightness(106%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    inset 0 -1px 0 rgb(255 255 255 / 0.08),
+    0 18px 40px -10px rgb(0 0 0 / 0.68),
+    0 2px 8px rgb(0 0 0 / 0.35);
+}
+html[data-theme="dark"][data-liquid-glass="on"] .nav::before {
+  background: radial-gradient(
+    64px circle at var(--lg-x) var(--lg-y),
+    rgb(255 255 255 / 0.11) 0%,
+    rgb(255 255 255 / 0.035) 38%,
+    transparent 68%
+  );
+}
+html[data-theme="dark"][data-liquid-glass="on"] .nav::after {
+  background: radial-gradient(
+    58px circle at var(--lg-x) var(--lg-y),
+    rgb(255 255 255 / 0.40) 0%,
+    rgb(255 255 255 / 0.10) 44%,
+    transparent 70%
+  );
+}
+html[data-theme="dark"][data-liquid-glass="on"] .nav a {
+  color: #a8ada6;
+}
+html[data-theme="dark"][data-liquid-glass="on"] .nav a:hover {
+  color: #ffffff;
+}
+html[data-theme="dark"][data-liquid-glass="on"] .nav:not([data-lg-dragging="true"]) a[aria-current],
+html[data-theme="dark"][data-liquid-glass="on"] .nav[data-lg-dragging="true"] a[data-pill-aim="true"] {
+  color: #ffffff;
+  font-weight: 600;
+}
+html[data-theme="dark"][data-liquid-glass="on"] .nav > .lg-slider {
+  background: linear-gradient(165deg, rgb(255 255 255 / 0.16) 0%, rgb(255 255 255 / 0.09) 100%);
+  border: 1px solid rgb(255 255 255 / 0.18);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.30),
+    0 4px 12px -4px rgb(0 0 0 / 0.48);
+}
+html[data-theme="dark"][data-liquid-glass="on"]:not([data-lg-perf="on"])
+  .nav
+  > .lg-slider[data-lifted="true"] {
+  z-index: 4;
+  background: linear-gradient(165deg, rgb(255 255 255 / 0.10) 0%, rgb(255 255 255 / 0.03) 100%);
+  border: 1px solid rgb(255 255 255 / 0.36);
+  -webkit-backdrop-filter: saturate(128%) brightness(105%);
+  backdrop-filter: url(#ios26-pill-magnifier) saturate(130%) brightness(105%);
+  box-shadow:
+    inset 0 1.5px 1px rgb(255 255 255 / 0.44),
+    inset 0 -1px 2px rgb(255 255 255 / 0.14),
+    0 12px 26px -6px rgb(0 0 0 / 0.65);
+}
+
+/* Mode Ringan Kaca (Better Performance) */
+html:not([data-theme="dark"])[data-liquid-glass="on"][data-lg-perf="on"] .nav > .lg-nav-surface {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.80) 0%, rgb(245 247 244 / 0.68) 100%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+}
+html[data-theme="dark"][data-liquid-glass="on"][data-lg-perf="on"] .nav > .lg-nav-surface {
+  background: linear-gradient(160deg, rgb(28 30 28 / 0.76) 0%, rgb(17 18 17 / 0.68) 100%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+html[data-liquid-glass="on"][data-lg-perf="on"] .nav > .lg-slider[data-lifted="true"] {
+  box-shadow:
+    inset 0 1.5px 0 rgb(255 255 255 / 0.45),
+    0 8px 20px -5px rgb(0 0 0 / 0.32);
+}
+
+/* ---------- 4. Kontrol Segmen (.seg) & Tab Saring (.tabs) ---------- */
+html[data-liquid-glass="on"] .seg,
+html[data-liquid-glass="on"] .tabs {
+  position: relative;
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .seg {
+  background: linear-gradient(180deg, rgb(216 222 213 / 0.65) 0%, rgb(232 236 230 / 0.82) 100%);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 0.08),
+    inset 0 -1px 0 rgb(255 255 255 / 0.88);
+}
+html[data-theme="dark"][data-liquid-glass="on"] .seg {
+  background: linear-gradient(180deg, rgb(11 14 10 / 0.82) 0%, rgb(16 20 15 / 0.90) 100%);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 0.45),
+    inset 0 -1px 0 rgb(255 255 255 / 0.05);
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .tabs {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.72) 0%, rgb(244 247 242 / 0.56) 100%);
+  border: 1px solid rgb(255 255 255 / 0.82);
+  -webkit-backdrop-filter: blur(16px) saturate(185%);
+  backdrop-filter: blur(16px) saturate(185%);
+  box-shadow:
+    inset 0 1.2px 0 rgb(255 255 255 / 0.95),
+    0 6px 18px -12px rgb(0 0 0 / 0.12);
+}
+html[data-theme="dark"][data-liquid-glass="on"] .tabs {
+  background: linear-gradient(160deg, rgb(26 32 24 / 0.76) 0%, rgb(19 24 18 / 0.64) 100%);
+  border: 1px solid rgb(255 255 255 / 0.09);
+  -webkit-backdrop-filter: blur(16px) saturate(185%);
+  backdrop-filter: blur(16px) saturate(185%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 8px 20px -12px rgb(0 0 0 / 0.48);
+}
+html[data-liquid-glass="on"] .seg button,
+html[data-liquid-glass="on"] .tabs button {
+  position: relative;
+  z-index: 1;
+}
+html[data-liquid-glass="on"] .seg button[aria-pressed="true"],
+html[data-liquid-glass="on"] .seg button[aria-checked="true"],
+html[data-liquid-glass="on"] .tabs button[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .seg > .lg-slider,
+html:not([data-theme="dark"])[data-liquid-glass="on"] .tabs > .lg-slider {
+  border-radius: var(--r-control);
+  background: linear-gradient(165deg, #214804 0%, #142d00 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.32),
+    0 3px 8px -2px rgb(0 0 0 / 0.26);
+}
+html[data-theme="dark"][data-liquid-glass="on"] .seg > .lg-slider,
+html[data-theme="dark"][data-liquid-glass="on"] .tabs > .lg-slider {
+  border-radius: var(--r-control);
+  background: linear-gradient(165deg, #2b471c 0%, #1e3313 100%);
+  border: 1px solid rgb(159 232 112 / 0.22);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.20),
+    0 3px 8px -2px rgb(0 0 0 / 0.45);
+}
+
+/* ---------- 5. Bar Atas Sub-Halaman (.bar), Tombol Kembali (.back), & Proto ---------- */
+html[data-liquid-glass="on"] .bar {
+  margin-left: calc(-1 * var(--s-lg));
+  margin-right: calc(-1 * var(--s-lg));
+  padding-left: var(--s-lg);
+  padding-right: var(--s-lg);
+  background: transparent;
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .back {
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.80) 0%, rgb(244 248 242 / 0.54) 100%);
+  border: 1px solid rgb(255 255 255 / 0.86);
+  outline: 1px solid rgb(0 0 0 / 0.07);
+  -webkit-backdrop-filter: blur(18px) saturate(165%);
+  backdrop-filter: url(#ios26-bevel-circle) saturate(165%);
+  box-shadow:
+    inset 0 1.5px 0 rgb(255 255 255 / 0.98),
+    0 8px 18px -8px rgb(0 0 0 / 0.18);
+  transition: transform 0.14s ease, background-color 0.2s ease;
+}
+html[data-theme="dark"][data-liquid-glass="on"] .back {
+  background: linear-gradient(145deg, rgb(30 32 30 / 0.76) 0%, rgb(18 20 18 / 0.58) 100%);
+  border: 1px solid rgb(255 255 255 / 0.16);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: url(#ios26-bevel-circle) saturate(145%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.24),
+    0 8px 20px -8px rgb(0 0 0 / 0.55);
+  transition: transform 0.14s ease, background-color 0.2s ease;
+}
+html[data-liquid-glass="on"][data-lg-perf="on"] .back {
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  backdrop-filter: blur(20px) saturate(155%);
+}
+html[data-liquid-glass="on"] .back:active {
+  transform: scale(0.93);
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .proto-btn {
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.78) 0%, rgb(242 246 240 / 0.56) 100%);
+  border: 1px solid rgb(255 255 255 / 0.85);
+  outline: 1px solid rgb(0 0 0 / 0.09);
+  -webkit-backdrop-filter: blur(16px) saturate(165%);
+  backdrop-filter: blur(16px) saturate(165%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.95),
+    0 6px 16px -8px rgb(0 0 0 / 0.18);
+}
+html[data-theme="dark"][data-liquid-glass="on"] .proto-btn {
+  background: linear-gradient(145deg, rgb(30 32 30 / 0.78) 0%, rgb(18 20 18 / 0.62) 100%);
+  border: 1px solid rgb(255 255 255 / 0.15);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.20),
+    0 8px 20px -10px rgb(0 0 0 / 0.55);
+}
+
+/* ---------- 6. Lembar Konfirmasi (dialog.sheet) & Toast (.toast) ---------- */
+html:not([data-theme="dark"])[data-liquid-glass="on"] dialog.sheet {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.82) 0%, rgb(248 250 247 / 0.90) 100%);
+  border-top: 1px solid rgb(255 255 255 / 0.92);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    inset 0 1.5px 0 rgb(255 255 255 / 0.98),
+    0 -16px 40px -12px rgb(0 0 0 / 0.26);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+html[data-theme="dark"][data-liquid-glass="on"] dialog.sheet {
+  background: linear-gradient(180deg, rgb(26 30 25 / 0.86) 0%, rgb(18 21 17 / 0.94) 100%);
+  border-top: 1px solid rgb(255 255 255 / 0.15);
+  -webkit-backdrop-filter: blur(28px) saturate(165%);
+  backdrop-filter: blur(28px) saturate(165%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 -18px 44px -12px rgb(0 0 0 / 0.68);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+@starting-style {
+  html[data-liquid-glass="on"]:not([data-lg-reduce-motion="on"]) dialog.sheet[open] {
+    transform: translateY(28px);
+    opacity: 0;
+  }
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] dialog.sheet::backdrop {
+  background: rgb(14 18 12 / 0.28);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+}
+html[data-theme="dark"][data-liquid-glass="on"] dialog.sheet::backdrop {
+  background: rgb(4 6 3 / 0.56);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+html:not([data-theme="dark"])[data-liquid-glass="on"] .toast {
+  background: linear-gradient(150deg, rgb(255 255 255 / 0.84) 0%, rgb(242 246 240 / 0.72) 100%);
+  color: var(--ink);
+  border: 1px solid rgb(255 255 255 / 0.88);
+  outline: 1px solid rgb(0 0 0 / 0.08);
+  -webkit-backdrop-filter: blur(22px) saturate(175%);
+  backdrop-filter: url(#ios26-bevel-circle) saturate(175%);
+  box-shadow:
+    inset 0 1.5px 0 rgb(255 255 255 / 0.98),
+    0 14px 30px -10px rgb(0 0 0 / 0.22);
+}
+html:not([data-theme="dark"])[data-liquid-glass="on"] .toast svg {
+  color: var(--gain);
+}
+html[data-theme="dark"][data-liquid-glass="on"] .toast {
+  background: linear-gradient(150deg, rgb(22 25 21 / 0.84) 0%, rgb(13 15 13 / 0.76) 100%);
+  color: #edf1eb;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  -webkit-backdrop-filter: blur(22px) saturate(155%);
+  backdrop-filter: url(#ios26-bevel-circle) saturate(155%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.30),
+    0 14px 30px -10px rgb(0 0 0 / 0.45);
+}
+html[data-liquid-glass="on"][data-lg-perf="on"] .toast {
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+}
+
+/* ---------- 7. Kurangi Animasi ---------- */
+html[data-lg-reduce-motion="on"] .chart .ln {
+  animation: none;
+}
+html[data-lg-reduce-motion="on"] .lg-slider,
+html[data-lg-reduce-motion="on"] .nav,
+html[data-lg-reduce-motion="on"] dialog.sheet,
+html[data-lg-reduce-motion="on"] .lg-switch-thumb,
+html[data-lg-reduce-motion="on"] .lg-prog-blur,
+html[data-lg-reduce-motion="on"] .lg-acc,
+html[data-lg-reduce-motion="on"] .acc-chev {
+  transition: none;
+}
+
+/* ---------- 8. Fallback Kaca Optik 2-Zona Khusus iOS Safari / WebKit ---------- */
+html[data-lg-engine="webkit"]:not([data-theme="dark"])[data-liquid-glass="on"]:not([data-lg-perf="on"])
+  .nav
+  > .lg-nav-surface {
+  -webkit-backdrop-filter: blur(5.5px) saturate(106%) brightness(104%);
+  backdrop-filter: blur(5.5px) saturate(106%) brightness(104%);
+}
+html[data-lg-engine="webkit"][data-theme="dark"][data-liquid-glass="on"]:not([data-lg-perf="on"])
+  .nav
+  > .lg-nav-surface {
+  -webkit-backdrop-filter: blur(5.5px) saturate(90%) brightness(106%);
+  backdrop-filter: blur(5.5px) saturate(90%) brightness(106%);
+}
+html[data-lg-engine="webkit"][data-liquid-glass="on"]:not([data-lg-perf="on"]) .nav > .lg-nav-rim {
+  display: block;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 0;
+  padding: 6.5px;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(1px) saturate(145%) brightness(115%) contrast(114%);
+  backdrop-filter: blur(1px) saturate(145%) brightness(115%) contrast(114%);
+  box-shadow:
+    inset 0 1.5px 1px rgb(255 255 255 / 0.42),
+    inset 0 -1.5px 1.5px rgb(255 255 255 / 0.16);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+html[data-lg-engine="webkit"][data-liquid-glass="on"]:not([data-lg-perf="on"])
+  .nav
+  > .lg-slider[data-lifted="true"] {
+  -webkit-backdrop-filter: blur(1px) saturate(135%) brightness(110%) contrast(106%);
+  backdrop-filter: blur(1px) saturate(135%) brightness(110%) contrast(106%);
+}
+html[data-lg-engine="webkit"][data-liquid-glass="on"]:not([data-lg-perf="on"]) .back {
+  -webkit-backdrop-filter: blur(8px) saturate(165%) brightness(105%);
+  backdrop-filter: blur(8px) saturate(165%) brightness(105%);
+}
+html[data-lg-engine="webkit"][data-liquid-glass="on"]:not([data-lg-perf="on"]) .toast {
+  -webkit-backdrop-filter: blur(14px) saturate(175%);
+  backdrop-filter: blur(14px) saturate(175%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-liquid-glass="on"] .lg-slider,
+  html[data-liquid-glass="on"] .nav,
+  html[data-liquid-glass="on"] dialog.sheet,
+  .lg-acc,
+  .acc-chev {
+    transition: none;
+  }
+}

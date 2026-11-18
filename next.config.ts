@@ -9,6 +9,7 @@ const previewBase = process.env.PREVIEW_BASE_PATH;
 const nextConfig: NextConfig = {
   // Badge dev Next menutupi navigasi bawah di layar HP; error tetap tampil di overlay.
   devIndicators: false,
+  allowedDevOrigins: ["*.trycloudflare.com"],
   ...(previewBase
     ? {
         output: "export",

@@ -24,6 +24,17 @@ colors:
   warning-ink: "#5A4300"
   field: "#F1F3EF"
   skeleton: "#ECEEE9"
+  dark-canvas: "#0C0F0B"
+  dark-card: "#151914"
+  dark-field: "#1E241C"
+  dark-ink: "#EDF1EB"
+  dark-ink-muted: "#9AA396"
+  dark-hairline: "#252C23"
+  dark-forest-ink: "#A2E378"
+  dark-forest-wash: "#222E1D"
+  dark-gain: "#5CE092"
+  dark-loss: "#FF7D84"
+  dark-warning-ink: "#FFD466"
 typography:
   display:
     fontFamily: "Inter, system-ui, sans-serif"
@@ -268,6 +279,14 @@ Palet sage dan hijau yang kalem, dengan satu warna limau terang sebagai tanda ak
 - **Kolom Isian** (`field`): latar kolom isian di dalam kartu putih, supaya kolom terlihat tanpa garis tepi.
 - **Kerangka** (`skeleton`): blok abu-abu saat memuat. Tidak berkedip dan tidak bergerak.
 
+### Mode Gelap (Wise Forest Obsidian)
+Saat tema `Gelap` aktif (atau mengikuti sistem perangkat), palet memetakan ulang peran semantik tanpa menggeser tata letak sedikit pun:
+- **Kanvas Obsidian** (`dark-canvas`): latar halaman gelap pekat bernuansa hijau hutan gelap.
+- **Kartu Obsidian** (`dark-card`) dan **Kolom Isian Gelap** (`dark-field`): permukaan kartu dan input dengan pemisah `dark-hairline` serta garis tepi halus 6% putih.
+- **Tinta Terang** (`dark-ink`) dan **Tinta Redup Gelap** (`dark-ink-muted`): menjaga keterbacaan angka dan keterangan di atas permukaan gelap.
+- **Aksen Hutan Terang** (`dark-forest-ink`): menggantikan hijau hutan pekat khusus untuk garis grafik, segmen "Kamu", dan tautan di atas latar gelap, sementara teks di atas tombol utama `lime-action` tetap memakai hijau hutan gelap (`#142D00`) agar kontras terjaga.
+- **Untung, Rugi, & Peringatan Gelap** (`dark-gain`, `dark-loss`, `dark-warning-ink`): rona semantik yang diangkat keterbacaannya untuk latar gelap.
+
 ### Named Rules
 **Aturan Limau Satu Aksi.** Hijau limau hanya untuk satu aksi utama per kartu, avatar, dan opsi segmen terpilih. Limau tidak pernah dipakai untuk teks di atas putih atau sage, dan tidak dipakai sebagai warna untung.
 
@@ -396,9 +415,13 @@ Kartu yang menunjukkan asal angka dalam bentuk hitungan dari atas ke bawah.
 - Diakhiri baris "Ikut X hari, sejak [tanggal]" dengan ikon kalender, dipisah garis rambut di atasnya.
 
 ### Navigation
-- **Navigasi melayang:** pil gelap (latar tinta, padding 6px) yang menempel 12px dari bawah layar, dengan bayangan "pil melayang". Isinya 4 item: Beranda, Pool, Transaksi, Lainnya.
-- **Item:** ikon 20px di atas label 10.5px, warna ikon navigasi redup.
-- **Aktif:** pil latar basuhan navigasi aktif, teks putih, label 600.
+- **Navigasi melayang:** kapsul yang menempel 12px dari bawah layar dengan padding 6px dan bayangan "pil melayang". Isinya 4 item untuk investor (Beranda, Pool, Transaksi, Lainnya) dan 5 item untuk pengelola (+ Kelola).
+- **Material Liquid Glass (default aktif):** permukaan navigasi bawah, tombol kembali bulat (`.back`), lembar konfirmasi bawah, dan toast memakai kaca kristal netral kalem (~35% vibrancy) dengan pembiasan lensa cembung (`feDisplacementMap`) pada browser Chromium serta fallback kaca 2-zona (tengah bening + cincin bevel tepi berkilau) pada WebKit/Safari, ditambah *progressive blur* murni tanpa kabut warna di tepi atas layar saat halaman digulir. Bila Liquid Glass dimatikan pengguna, permukaan kembali ke warna solid (`ink` di mode terang, `#1E241C` di mode gelap).
+- **Item & Kapsul Aktif:** ikon 20px di atas label 10.5px. Kapsul indikator aktif (`lg-slider`) mendukung fisika pegas tiga sumbu (mengembang saat berpindah dan dapat digeser langsung secara horizontal dengan jari), serta dapat disederhanakan lewat opsi `Mode ringan kaca` atau `Kurangi animasi`.
+
+### Pengaturan Tampilan (Accordion di Halaman Lainnya)
+- Di halaman `Lainnya`, pengaturan tampilan ditempatkan sebagai satu baris `Tampilan` di dalam kartu Menu (di bawah `Log perubahan` / `Kelola pool`, tepat di atas `Keluar`) dengan sub-label ringkasan status aktif (misalnya "Mengikuti sistem · Liquid Glass").
+- Saat baris `Tampilan` diklik, daftar pengaturan membuka ke bawah secara inline (*accordion*) tanpa berpindah halaman dan tanpa membuat kartu bersarang: pilihan `Tema warna` (`Sistem | Terang | Gelap`), switch `Liquid Glass` (beserta sub-opsi `Mode ringan kaca`, `Progressive blur atas`, dan `Pill pegas & geser jari`), serta `Kurangi animasi`.
 
 ### Header Sapaan
 - Langsung di atas kanvas, tanpa kartu. Kiri: "Halo, [nama]" (Headline) dan stempel waktu data (Caption). Kanan: avatar 36px berisi inisial (latar limau, teks hutan, 600 14px).
@@ -457,4 +480,4 @@ Ditetapkan oleh prototype (form Setor, Tarik, saldo harian, anggota, pengaturan)
 - **Don't** pakai hijau limau sebagai warna teks di atas putih atau sage, karena kontrasnya tidak terbaca.
 - **Don't** tambahkan font kedua atau font mono untuk angka. Cukup Inter dengan digit tabular.
 - **Don't** pakai tab bar yang menempel penuh di bawah layar. Navigasi Beranda memakai pil melayang.
-- **Don't** tambahkan animasi selain garis grafik yang tergambar dan umpan balik tekan pada tombol.
+- **Don't** tambahkan animasi dekoratif di luar garis grafik yang tergambar, umpan balik tekan tombol, dan transisi fisik kapsul indikator yang menghormati pengaturan `Kurangi animasi` / `prefers-reduced-motion`.
