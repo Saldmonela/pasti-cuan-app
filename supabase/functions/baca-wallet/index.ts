@@ -7,9 +7,14 @@ const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const PUBLIC_SOLANA_RPC = "https://api.mainnet-beta.solana.com";
 
+const HAWKSIGHT_PROGRAM_ID = "FqGg2Y1FNxMiGd51Q6UETixQWkF5fB92MysbYogRJb3P";
+const HAWKSIGHT_EXTENSION_PROGRAM_ID = "EZiUb6ydWpR3ciizBTJ1J36KCqLyPKVjh4yZEJbs5Uno";
+
 const DEFI_PROGRAM_IDS = new Set([
   "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
   "zapvX9M3uf5pvy4wRPAbQgdQsM1xmuiFnkfHKPvwMiz", // Meteora Zap
+  HAWKSIGHT_PROGRAM_ID, // HawkFi / Hawksight
+  HAWKSIGHT_EXTENSION_PROGRAM_ID, // HawkFi Extension
   "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter v6
   "JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB", // Jupiter v4
   "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM
@@ -203,6 +208,49 @@ function extractCounterparty(tx: ParsedTx, wallet: string, arah: "masuk" | "kelu
   return other ?? "tidak_diketahui";
 }
 
+type MeteoraOpenRes = {
+  solPrice?: string | number;
+  total?: { balances?: string | number; unclaimedFees?: string | number };
+  pools?: Array<{ poolAddress?: string; poolStateUpdatedAtBlockTime?: number }>;
+};
+
+type MeteoraPnlRes = {
+  tokenX?: string;
+  tokenY?: string;
+  tokenXPrice?: string | number;
+  tokenYPrice?: string | number;
+  positions?: Array<{
+    positionAddress?: string;
+    unrealizedPnl?: {
+      balanceTokenX?: { amount?: string | number };
+      balanceTokenY?: { amount?: string | number };
+      unclaimedFeeTokenX?: { amount?: string | number };
+      unclaimedFeeTokenY?: { amount?: string | number };
+    };
+  }>;
+};
+
+/** Temukan user PDA HawkFi/Hawksight milik wallet pool (posisi LP via HawkFi tercatat atas nama PDA ini). */
+async function findHawkFiUserPdas(rpcUrl: string, wallet: string): Promise<string[]> {
+  const res = (await rpcCall(rpcUrl, "getProgramAccounts", [
+    HAWKSIGHT_PROGRAM_ID,
+    {
+      encoding: "base64",
+      dataSlice: { offset: 0, length: 0 },
+      filters: [{ memcmp: { offset: 8, bytes: wallet } }],
+    },
+  ])) as Array<{ pubkey?: string }> | null;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of res ?? []) {
+    if (item.pubkey && item.pubkey !== wallet && !seen.has(item.pubkey)) {
+      seen.add(item.pubkey);
+      out.push(item.pubkey);
+    }
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   const startedAt = Date.now();
   const cronSecret = Deno.env.get("CRON_SECRET") ?? "";
@@ -240,42 +288,94 @@ Deno.serve(async (req) => {
     const ambangLikuiditas = Number(cfg.ambang_likuiditas_token_usd ?? 10000);
     const ambangDust = Number(cfg.ambang_dust_usd ?? 1);
 
-    // 1. Meteora open pools
-    const meteoraOpen = (await fetchJsonWithRetry(
-      `https://dlmm.datapi.meteora.ag/portfolio/open?user=${wallet}`,
-    )) as {
-      solPrice?: string | number;
-      total?: { balances?: string | number; unclaimedFees?: string | number };
-      pools?: Array<{ poolAddress?: string; poolStateUpdatedAtBlockTime?: number }>;
-    };
+    // 1. Temukan akun PDA HawkFi milik wallet + baca SOL native wallet utama
+    const [hawkPdas, balRes] = await Promise.all([
+      findHawkFiUserPdas(rpcUrl, wallet),
+      rpcCall(rpcUrl, "getBalance", [wallet]) as Promise<{ value?: number }>,
+    ]);
+    const owners = [wallet, ...hawkPdas];
 
-    const openPools = meteoraOpen.pools ?? [];
+    // 2. Meteora open pools & Solana SPL/Token-2022 accounts untuk wallet utama + PDA HawkFi
+    const [meteoraOpens, tokenAccountsPerOwner] = await Promise.all([
+      Promise.all(
+        owners.map(async (owner) => ({
+          owner,
+          data: (await fetchJsonWithRetry(
+            `https://dlmm.datapi.meteora.ag/portfolio/open?user=${owner}`,
+          )) as MeteoraOpenRes,
+        })),
+      ),
+      Promise.all(
+        owners.map(async (owner) => {
+          const [splRes, t22Res] = await Promise.all([
+            rpcCall(rpcUrl, "getTokenAccountsByOwner", [
+              owner,
+              { programId: TOKEN_PROGRAM },
+              { encoding: "jsonParsed" },
+            ]) as Promise<{ value?: TokenAccountEntry[] }>,
+            rpcCall(rpcUrl, "getTokenAccountsByOwner", [
+              owner,
+              { programId: TOKEN_2022_PROGRAM },
+              { encoding: "jsonParsed" },
+            ]) as Promise<{ value?: TokenAccountEntry[] }>,
+          ]);
+          return [...(splRes?.value ?? []), ...(t22Res?.value ?? [])];
+        }),
+      ),
+    ]);
+
+    const poolTasks: Array<{ owner: string; poolAddress: string; updatedAt?: number }> = [];
+    let meteoraUsdTotal = 0;
+    let fallbackSolPrice = 0;
+    let dataPoolPada: number | null = null;
+
+    for (const { owner, data } of meteoraOpens) {
+      if (!fallbackSolPrice) fallbackSolPrice = safeNum(data.solPrice);
+      meteoraUsdTotal += safeNum(data.total?.balances) + safeNum(data.total?.unclaimedFees);
+      for (const pool of data.pools ?? []) {
+        if (!pool.poolAddress) continue;
+        if (
+          pool.poolStateUpdatedAtBlockTime != null &&
+          (dataPoolPada == null || pool.poolStateUpdatedAtBlockTime > dataPoolPada)
+        ) {
+          dataPoolPada = pool.poolStateUpdatedAtBlockTime;
+        }
+        poolTasks.push({
+          owner,
+          poolAddress: pool.poolAddress,
+          updatedAt: pool.poolStateUpdatedAtBlockTime,
+        });
+      }
+    }
+
+    // 3. Meteora positions per (owner, pool)
     const posisiDetail: Array<Record<string, unknown>> = [];
     const allMints = new Set<string>([SOL_MINT]);
 
-    // 2. Meteora positions per pool
-    for (const pool of openPools) {
-      if (!pool.poolAddress) continue;
-      const pnl = (await fetchJsonWithRetry(
-        `https://dlmm.datapi.meteora.ag/positions/${pool.poolAddress}/pnl?user=${wallet}&status=open`,
-      )) as {
-        tokenX?: string;
-        tokenY?: string;
-        positions?: Array<{
-          positionAddress?: string;
-          unrealizedPnl?: {
-            balanceTokenX?: { amount?: string | number };
-            balanceTokenY?: { amount?: string | number };
-            unclaimedFeeTokenX?: { amount?: string | number };
-            unclaimedFeeTokenY?: { amount?: string | number };
-          };
-        }>;
-      };
+    const pnlResults = await Promise.all(
+      poolTasks.map(async ({ owner, poolAddress }) => ({
+        owner,
+        poolAddress,
+        pnl: (await fetchJsonWithRetry(
+          `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${owner}&status=open`,
+        )) as MeteoraPnlRes,
+      })),
+    );
 
+    const meteoraFallbackPrices = new Map<string, number>();
+    for (const { owner, poolAddress, pnl } of pnlResults) {
       const mintX = pnl.tokenX ?? "";
       const mintY = pnl.tokenY ?? "";
-      if (mintX) allMints.add(mintX);
-      if (mintY) allMints.add(mintY);
+      if (mintX) {
+        allMints.add(mintX);
+        const px = safeNum(pnl.tokenXPrice);
+        if (px > 0) meteoraFallbackPrices.set(mintX, px);
+      }
+      if (mintY) {
+        allMints.add(mintY);
+        const py = safeNum(pnl.tokenYPrice);
+        if (py > 0) meteoraFallbackPrices.set(mintY, py);
+      }
 
       let jumlahX = 0;
       let jumlahY = 0;
@@ -289,7 +389,8 @@ Deno.serve(async (req) => {
         feeY += safeNum(u?.unclaimedFeeTokenY?.amount);
       }
       posisiDetail.push({
-        pool: pool.poolAddress,
+        pool: poolAddress,
+        ...(owner !== wallet ? { owner } : {}),
         mint_x: mintX,
         mint_y: mintY,
         jumlah_x: jumlahX,
@@ -299,24 +400,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 3. Solana RPC: native SOL + SPL Token + Token-2022
-    const [balRes, splRes, t22Res] = await Promise.all([
-      rpcCall(rpcUrl, "getBalance", [wallet]) as Promise<{ value?: number }>,
-      rpcCall(rpcUrl, "getTokenAccountsByOwner", [
-        wallet,
-        { programId: TOKEN_PROGRAM },
-        { encoding: "jsonParsed" },
-      ]) as Promise<{ value?: TokenAccountEntry[] }>,
-      rpcCall(rpcUrl, "getTokenAccountsByOwner", [
-        wallet,
-        { programId: TOKEN_2022_PROGRAM },
-        { encoding: "jsonParsed" },
-      ]) as Promise<{ value?: TokenAccountEntry[] }>,
-    ]);
-
     const solNative = safeNum(balRes?.value) / 1e9;
     const tokenWalletMap = new Map<string, number>();
-    for (const acc of [...(splRes?.value ?? []), ...(t22Res?.value ?? [])]) {
+    for (const acc of tokenAccountsPerOwner.flat()) {
       const info = acc.account?.data?.parsed?.info;
       const mint = info?.mint;
       const amt = safeNum(info?.tokenAmount?.uiAmountString ?? info?.tokenAmount?.uiAmount);
@@ -328,15 +414,16 @@ Deno.serve(async (req) => {
 
     // 4. Jupiter Price API v3 (single batch call if <= 50 mints)
     let prices: Record<string, { usdPrice?: number; liquidity?: number }> = {};
+    let jupiterFailed = false;
     try {
       prices = await fetchJupiterPrices([...allMints]);
     } catch {
-      // Fallback hanya untuk SOL bila Jupiter sementara gagal
+      // Fallback ke Meteora bila Jupiter sementara gagal
+      jupiterFailed = true;
       prices = {};
     }
 
-    const hargaSolUsd =
-      safeNum(prices[SOL_MINT]?.usdPrice) || safeNum(meteoraOpen.solPrice);
+    const hargaSolUsd = safeNum(prices[SOL_MINT]?.usdPrice) || fallbackSolPrice;
     if (hargaSolUsd <= 0) {
       throw new Error("Harga SOL tidak tersedia dari Jupiter maupun Meteora");
     }
@@ -347,7 +434,9 @@ Deno.serve(async (req) => {
       const entry = prices[mint];
       const p = safeNum(entry?.usdPrice);
       const liq = safeNum(entry?.liquidity);
-      if (p <= 0) return 0;
+      if (p <= 0) {
+        return jupiterFailed ? (meteoraFallbackPrices.get(mint) ?? 0) : 0;
+      }
       if (mint === USDC_MINT || mint === USDT_MINT) return p;
       return liq >= ambangLikuiditas ? p : 0;
     };
@@ -396,9 +485,9 @@ Deno.serve(async (req) => {
       sol_native: Number(solNative.toFixed(9)),
       sol_native_usd: Number(solNativeUsd.toFixed(4)),
       token: tokenWalletDetail,
-      data_pool_pada: openPools[0]?.poolStateUpdatedAtBlockTime ?? null,
-      meteora_usd:
-        safeNum(meteoraOpen.total?.balances) + safeNum(meteoraOpen.total?.unclaimedFees),
+      data_pool_pada: dataPoolPada,
+      meteora_usd: meteoraUsdTotal,
+      pemilik_dilacak: owners,
     };
 
     const { data: titikRow, error: titikErr } = await sb
