@@ -26,6 +26,21 @@ npm run lint   # eslint
 npm run build  # next build
 ```
 
+## Menjalankan Aplikasi Android (`android-app/`)
+
+Proyek Native Android berada di folder `android-app/` (Kotlin + Jetpack Compose, minSdk 26 / Android 8.0+, JDK 17+). Saat ini (Milestone M2) masih memakai mode simulasi lokal dengan data contoh di dalam aplikasi, sehingga belum memerlukan `.env.local` maupun kunci Supabase.
+
+1. Buka folder **`android-app/`** (bukan root repo) di **Android Studio**, tunggu Gradle sync selesai (`local.properties` berisi `sdk.dir` akan dibuat otomatis), lalu tekan **Run**.
+2. Atau jalankan lewat terminal (pastikan `JAVA_HOME` mengarah ke JDK 17+ dan Android SDK sudah terpasang):
+
+```bash
+cd android-app
+./gradlew testDebugUnitTest   # Windows: .\gradlew.bat testDebugUnitTest
+./gradlew assembleDebug       # Windows: .\gradlew.bat assembleDebug
+```
+
+File `.apk` hasil build (serta `local.properties`, `*.jks`, dan `*.keystore`) diabaikan oleh `.gitignore`. Jika ingin membagikan `.apk` ke anggota lain, unggah lewat **GitHub Releases** atau kirim langsung; aturan penamaan & naik versi `.apk` mengikuti [`GEMINI.md`](GEMINI.md).
+
 ## Preview Statis (GitHub Pages)
 
 Untuk membangun versi prototype statis ke `out/` dan mengirimkannya ke repo preview terpisah (`Saldmonela/pasti-cuan-preview`):
@@ -42,4 +57,5 @@ npm run publish:preview
 - `src/app/api/`: Route Handlers (`posisi`, `permintaan`, `arus-onchain/tandai`, `snapshot`, `anggota`, `pengaturan`, `impor`, `audit`, `simulasi-tarik`).
 - `src/app/(app)/`: halaman Beranda (`/`), Pool (`/pool`), Transaksi (`/permintaan`), Setor (`/setor`), Tarik (`/tarik`), Lainnya (`/lainnya`), Log (`/log`), serta panel Kelola (`/kelola/*`).
 - `supabase/migrations/`: skema SQL, RLS, trigger audit, job ringkasan `titik_nilai`, dan jadwal `pg_cron`.
-- `supabase/functions/baca-wallet/`: Edge Function pembaca saldo wallet Solana/Meteora & deteksi transfer onchain.
+- `supabase/functions/baca-wallet/`: Edge Function pembaca saldo wallet Solana/Meteora (termasuk PDA HawkFi) & deteksi transfer onchain.
+- `android-app/`: aplikasi Native Android (Kotlin + Jetpack Compose); PRD di [`docs/prd/prd-aplikasi-android-pasti-cuan.md`](docs/prd/prd-aplikasi-android-pasti-cuan.md).
