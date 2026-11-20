@@ -189,7 +189,42 @@ interface ParsedTx {
   };
 }
 
-function extractCounterparty(tx: ParsedTx, wallet: string, arah: "masuk" | "keluar"): string {
+function extractCounterparty(
+  tx: ParsedTx,
+  wallet: string,
+  arah: "masuk" | "keluar",
+  mint: string,
+): string {
+  // Untuk SPL token (USDC/USDT/dll), baca `owner` dari token balance delta agar dapat alamat wallet utama
+  // penerima/pengirim, bukan Associated Token Account (ATA) dari instruksi transfer.
+  if (mint !== SOL_MINT) {
+    const pre = new Map<string, number>();
+    const post = new Map<string, number>();
+    for (const b of tx.meta?.preTokenBalances ?? []) {
+      if (b.mint === mint && b.owner && b.owner !== wallet) {
+        const v = safeNum(b.uiTokenAmount?.uiAmountString ?? b.uiTokenAmount?.uiAmount);
+        pre.set(b.owner, (pre.get(b.owner) ?? 0) + v);
+      }
+    }
+    for (const b of tx.meta?.postTokenBalances ?? []) {
+      if (b.mint === mint && b.owner && b.owner !== wallet) {
+        const v = safeNum(b.uiTokenAmount?.uiAmountString ?? b.uiTokenAmount?.uiAmount);
+        post.set(b.owner, (post.get(b.owner) ?? 0) + v);
+      }
+    }
+    let bestOwner = "";
+    let bestDelta = 0;
+    for (const owner of new Set([...pre.keys(), ...post.keys()])) {
+      const delta = (post.get(owner) ?? 0) - (pre.get(owner) ?? 0);
+      const matchesDir = arah === "keluar" ? delta > 1e-9 : delta < -1e-9;
+      if (matchesDir && Math.abs(delta) > bestDelta) {
+        bestDelta = Math.abs(delta);
+        bestOwner = owner;
+      }
+    }
+    if (bestOwner) return bestOwner;
+  }
+
   const ixs = tx.transaction?.message?.instructions ?? [];
   for (const ix of ixs) {
     const info = ix.parsed?.info;
@@ -609,11 +644,6 @@ Deno.serve(async (req) => {
               }
             }
 
-            // Abaikan jika terlihat seperti swap (ada aset masuk dan keluar sekaligus)
-            const hasIn = deltas.some((d) => d.delta > 0);
-            const hasOut = deltas.some((d) => d.delta < 0);
-            if (hasIn && hasOut) continue;
-
             const extraMints = deltas
               .map((d) => d.mint)
               .filter((m) => m !== SOL_MINT && m !== USDC_MINT && m !== USDT_MINT && !prices[m]);
@@ -625,13 +655,8 @@ Deno.serve(async (req) => {
               }
             }
 
-            const waktuIso = tx.blockTime
-              ? new Date(tx.blockTime * 1000).toISOString()
-              : now.toISOString();
-
-            for (let idx = 0; idx < deltas.length; idx++) {
-              const d = deltas[idx];
-              const arah = d.delta > 0 ? "masuk" : "keluar";
+            const pricedDeltas = deltas.map((d) => {
+              const arah: "masuk" | "keluar" = d.delta > 0 ? "masuk" : "keluar";
               const jumlah = Math.abs(d.delta);
               const px =
                 d.mint === USDC_MINT || d.mint === USDT_MINT
@@ -641,20 +666,35 @@ Deno.serve(async (req) => {
                   : safeNum(prices[d.mint]?.usdPrice);
               const nilaiFlowUsd = Number((jumlah * px).toFixed(2));
               const isDust = nilaiFlowUsd < ambangDust;
+              return { ...d, arah, jumlah, nilaiFlowUsd, isDust };
+            });
+
+            // Abaikan hanya jika kedua arah masuk & keluar bernilai non-dust (swap asli),
+            // supaya penarikan penuh SPL yang menutup ATA (reclaim rent ~0,002 SOL < dust) tidak terlewat.
+            const hasNonDustIn = pricedDeltas.some((d) => d.arah === "masuk" && !d.isDust);
+            const hasNonDustOut = pricedDeltas.some((d) => d.arah === "keluar" && !d.isDust);
+            if (hasNonDustIn && hasNonDustOut) continue;
+
+            const waktuIso = tx.blockTime
+              ? new Date(tx.blockTime * 1000).toISOString()
+              : now.toISOString();
+
+            for (let idx = 0; idx < pricedDeltas.length; idx++) {
+              const d = pricedDeltas[idx];
 
               const { error: insFlowErr } = await sb.from("arus_onchain").upsert(
                 {
                   signature: s.signature,
                   urutan: idx,
                   waktu: waktuIso,
-                  arah,
+                  arah: d.arah,
                   mint: d.mint,
                   simbol: mintSymbol(d.mint),
-                  jumlah: Number(jumlah.toFixed(9)),
-                  nilai_usd: nilaiFlowUsd,
-                  alamat_lawan: extractCounterparty(tx, wallet, arah),
-                  status: isDust ? "bukan_arus" : "belum",
-                  catatan: isDust ? "dust otomatis" : null,
+                  jumlah: Number(d.jumlah.toFixed(9)),
+                  nilai_usd: d.nilaiFlowUsd,
+                  alamat_lawan: extractCounterparty(tx, wallet, d.arah, d.mint),
+                  status: d.isDust ? "bukan_arus" : "belum",
+                  catatan: d.isDust ? "dust otomatis" : null,
                 },
                 { onConflict: "signature,urutan", ignoreDuplicates: true },
               );

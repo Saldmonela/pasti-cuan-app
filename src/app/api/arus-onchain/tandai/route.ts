@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { batasMenitSebelumTransfer } from "@/lib/arus-matching";
 import { hitungPool } from "@/lib/engine";
 import { tanggal as fmtTanggal, usd, waktu as fmtWaktu, wibIso } from "@/lib/format";
 import { ms, msSnapshot } from "@/lib/onchain";
@@ -71,15 +72,28 @@ export async function POST(request: Request) {
     const jenis: Jenis = arah === "masuk" ? "setor" : "tarik";
     const alasanSelisih = body.alasan_selisih?.trim() || undefined;
 
-    // Cari titik nilai terdekat pada atau sebelum waktu transfer (BR-18, update 17 Nov 2026)
-    const { data: refTitik } = await admin
+    // Cari titik nilai terdekat SEBELUM menit transfer (BR-18) agar pembacaan di menit yang sama
+    // yang terjadi sesudah dana berpindah (dibulatkan ke :00) tidak dipakai untuk menilai transaksi.
+    const batasMenit = batasMenitSebelumTransfer(waktuTransfer);
+    const { data: refTitikSebelum } = await admin
       .from("titik_nilai")
       .select("id, dibaca_pada")
       .eq("sumber", "baca")
-      .lte("dibaca_pada", waktuTransfer)
+      .lt("dibaca_pada", batasMenit)
       .order("dibaca_pada", { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    const { data: refTitik } = refTitikSebelum
+      ? { data: refTitikSebelum }
+      : await admin
+          .from("titik_nilai")
+          .select("id, dibaca_pada")
+          .eq("sumber", "baca")
+          .lte("dibaca_pada", waktuTransfer)
+          .order("dibaca_pada", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
     const { data: fallbackTitik } = !refTitik
       ? await admin

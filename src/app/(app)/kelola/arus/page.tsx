@@ -2,13 +2,14 @@
 // Arus onchain (US-13): transfer masuk/keluar wallet yang terdeteksi otomatis, dicocokkan pengelola
 // dengan permintaan, dibuatkan permintaan, atau ditandai biaya pool / bukan arus.
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { IconArrowDownLeft, IconArrowUpRight } from "@tabler/icons-react";
 import { BackBar, describedBy, Field, KhususPengelola, Sheet, StatusBanners } from "@/components/ui";
-import { angka, tanggal, usd, waktu } from "@/lib/format";
+import { cariSaranArus, jenisDariArah, pilihAnggotaAwal, pilihPermintaanAwal } from "@/lib/arus-matching";
+import { angka, ringkasAlamat, tanggal, usd, waktu } from "@/lib/format";
+import { ms } from "@/lib/onchain";
 import { mintaSelesai, tanggalEfektifArus, useStore } from "@/lib/store";
-import type { ArusOnchain, Permintaan, StatusArus } from "@/lib/types";
+import type { ArusOnchain, StatusArus } from "@/lib/types";
 
 type Filter = "belum" | "ditandai" | "semua";
 type Mode = "cocok" | "buat" | "biaya" | "bukan_arus";
@@ -20,8 +21,7 @@ const jumlahToken = (a: ArusOnchain) => {
 };
 
 export default function Arus() {
-  const { isPrototype, saya, data, arus, nama, tandaiArus, batalTandai, tampilkan, offline, hariIni } = useStore();
-  const router = useRouter();
+  const { saya, data, arus, arusBelum, nama, tandaiArus, batalTandai, tampilkan, offline, hariIni } = useStore();
   const [f, setF] = useState<Filter>("belum");
   const [buka, setBuka] = useState<ArusOnchain | null>(null);
   const [mode, setMode] = useState<Mode>("cocok");
@@ -30,26 +30,16 @@ export default function Arus() {
   const [aid, setAid] = useState("");
   const [catatan, setCatatan] = useState("");
   const [alasan, setAlasan] = useState("");
+  const [sedangSimpan, setSedangSimpan] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   const [errBaris, setErrBaris] = useState<Record<string, string>>({});
   if (!saya) return null;
   if (saya.peran !== "pengelola") return (<><BackBar judul="Arus onchain" ke="/kelola" /><main><KhususPengelola /></main></>);
 
   const tol = data.pengaturan.toleransiCocokPersen;
-  const jenisArus = (a: ArusOnchain) => (a.arah === "masuk" ? "setor" : "tarik");
   const menunggu = data.permintaan.filter((p) => p.status === "menunggu");
 
-  /** Saran pencocokan: permintaan sejenis dengan selisih <= toleransi, atau anggota dengan alamat wallet yang sama. */
-  function saran(a: ArusOnchain): { p: Permintaan; alasan: string }[] {
-    return menunggu
-      .filter((p) => p.jenis === jenisArus(a))
-      .flatMap((p) => {
-        const mirip = Math.abs(a.nilaiUsd - p.jumlahUsd) / p.jumlahUsd <= tol / 100;
-        const alamat = data.anggota.find((x) => x.id === p.anggotaId)?.alamatWallet?.includes(a.alamatLawan);
-        if (!mirip && !alamat) return [];
-        return [{ p, alasan: alamat ? "alamat wallet sama" : `selisih jumlah di bawah ${tol}%` }];
-      });
-  }
+  const saran = (a: ArusOnchain) => cariSaranArus(a, menunggu, data.anggota, tol, arusBelum);
 
   const daftar = [...arus]
     .filter((a) => f === "semua" || (f === "belum" ? a.status === "belum" : a.status !== "belum"))
@@ -57,13 +47,16 @@ export default function Arus() {
   const n = (x: Filter) => arus.filter((a) => x === "semua" || (x === "belum" ? a.status === "belum" : a.status !== "belum")).length;
 
   function mulai(a: ArusOnchain, m: Mode) {
-    const s = saran(a);
     setBuka(a);
     setMode(m);
-    setPid(s[0]?.p.id ?? "");
+    setPid(pilihPermintaanAwal(a, menunggu, data.anggota, tol, arusBelum));
     // transfer lain ke/dari alamat yang sama ikut dicocokkan (contoh: 1 USDC + 730,51 USDC)
-    setIkut(arus.filter((x) => x.id !== a.id && x.status === "belum" && x.arah === a.arah && x.alamatLawan === a.alamatLawan).map((x) => x.id));
-    setAid(data.anggota.find((x) => x.alamatWallet?.includes(a.alamatLawan))?.id ?? "");
+    setIkut(
+      arus
+        .filter((x) => x.id !== a.id && x.status === "belum" && x.arah === a.arah && x.alamatLawan === a.alamatLawan)
+        .map((x) => x.id),
+    );
+    setAid(pilihAnggotaAwal(a, menunggu, data.anggota));
     setCatatan("");
     setAlasan("");
     setErr({});
@@ -74,25 +67,60 @@ export default function Arus() {
   const total = arus.filter((x) => ids.includes(x.id)).reduce((t, x) => t + x.nilaiUsd, 0);
   const pPilih = menunggu.find((p) => p.id === pid);
   const selisih = pPilih ? Math.abs(total - pPilih.jumlahUsd) / pPilih.jumlahUsd > tol / 100 : false;
-  const calon = buka ? menunggu.filter((p) => p.jenis === jenisArus(buka)) : [];
+  const calon = buka ? menunggu.filter((p) => p.jenis === jenisDariArah(buka.arah)) : [];
+  const permintaanTertaut = new Set(arus.map((x) => x.permintaanId).filter(Boolean));
+  const selesaiTanpaArus = buka
+    ? data.permintaan
+        .filter(
+          (p) =>
+            p.status === "selesai" &&
+            p.sumber === "app" &&
+            p.jenis === jenisDariArah(buka.arah) &&
+            !p.titikNilaiId &&
+            !permintaanTertaut.has(p.id) &&
+            Math.abs(ms(p.diprosesPada ?? p.dibuatPada) - ms(buka.waktu)) <= 48 * 60 * 60 * 1000,
+        )
+        .sort((a, b) => (a.dibuatPada < b.dibuatPada ? 1 : -1))
+    : [];
   const saranId = new Set(buka ? saran(buka).map((s) => s.p.id) : []);
 
   async function simpan() {
-    if (!buka) return;
-    const h =
-      mode === "cocok"
-        ? await tandaiArus(ids, { status: "dicocokkan", permintaanId: pid, alasanSelisih: alasan })
-        : mode === "buat"
-          ? await tandaiArus(ids, { status: "buat", anggotaId: aid })
-          : await tandaiArus([buka.id], { status: mode, catatan });
-    if (!h.ok) return setErr({ [h.field ?? "form"]: h.pesan });
-    tampilkan(h.nilai!);
-    const lanjut = mode === "cocok" ? pid : mode === "buat" ? "baru" : null;
-    setBuka(null);
-    if (isPrototype && lanjut) {
-      // AC-13-01 prototype: lanjut ke "Konfirmasi diterima" / "Tandai selesai"
-      mintaSelesai(lanjut === "baru" ? { arusId: buka.id } : { permintaanId: lanjut });
-      router.push("/kelola/permintaan");
+    if (!buka || sedangSimpan) return;
+    if (mode === "cocok") {
+      if (!pid) {
+        setErr({ pid: "Pilih salah satu permintaan di atas terlebih dahulu." });
+        return;
+      }
+      if (selisih && !alasan.trim()) {
+        setErr({ alasan: `Isi alasan selisih karena berbeda lebih dari ${tol}%.` });
+        return;
+      }
+    } else if (mode === "buat") {
+      if (!aid) {
+        setErr({ anggota: "Pilih anggota terlebih dahulu." });
+        return;
+      }
+    } else if (!catatan.trim()) {
+      setErr({ catatan: "Catatan wajib diisi." });
+      return;
+    }
+
+    setSedangSimpan(true);
+    try {
+      const h =
+        mode === "cocok"
+          ? await tandaiArus(ids, { status: "dicocokkan", permintaanId: pid, alasanSelisih: alasan })
+          : mode === "buat"
+            ? await tandaiArus(ids, { status: "buat", anggotaId: aid })
+            : await tandaiArus([buka.id], { status: mode, catatan });
+      if (!h.ok) {
+        setErr({ [h.field ?? "form"]: h.pesan });
+        return;
+      }
+      tampilkan(h.nilai!);
+      setBuka(null);
+    } finally {
+      setSedangSimpan(false);
     }
   }
 
@@ -134,7 +162,7 @@ export default function Arus() {
                         <span className={`chip ${a.status}`}>{LABEL_STATUS[a.status]}</span>
                       </div>
                       <div className="s">{waktu(a.waktu)}</div>
-                      <div className="s num">
+                      <div className="s num" style={{ overflowWrap: "anywhere" }}>
                         {a.arah === "masuk" ? "Dari" : "Ke"} {a.alamatLawan}
                       </div>
                       {s.map((x) => (
@@ -205,15 +233,15 @@ export default function Arus() {
           )}
         </section>
         <p className="note" style={{ padding: "0 4px" }}>
-          Tanggal efektif transfer = snapshot resmi pertama sesudahnya. Transfer yang belum dicocokkan saat snapshot dibuat membuat cek data gagal.
-          Hari ini {tanggal(hariIni)}.
+          Transfer yang dicocokkan langsung menyelesaikan permintaan pada waktu transfer (memakai titik nilai terdekat sebelumnya). Transfer yang
+          belum dicocokkan saat snapshot dibuat membuat cek data gagal. Hari ini {tanggal(hariIni)}.
         </p>
       </main>
 
       <Sheet buka={!!buka} onTutup={() => setBuka(null)} judul={buka ? `Transfer ${waktu(buka.waktu)}` : ""}>
         {buka && (
           <>
-            <p className="note" style={{ marginTop: -6 }}>
+            <p className="note" style={{ marginTop: -6, overflowWrap: "anywhere" }}>
               {buka.arah === "masuk" ? "Masuk" : "Keluar"} {jumlahToken(buka)} · {usd(buka.nilaiUsd)} · {buka.arah === "masuk" ? "dari" : "ke"} {buka.alamatLawan}
             </p>
             <div className="field">
@@ -223,7 +251,12 @@ export default function Arus() {
                   [
                     ["cocok", `Cocokkan dengan ${buka.arah === "masuk" ? "setoran" : "penarikan"} yang diajukan`],
                     ["buat", "Buat permintaan untuk anggota"],
-                    ["biaya", "Biaya pool (dianggap rugi pool)"],
+                    [
+                      "biaya",
+                      buka.arah === "masuk"
+                        ? "Operasional / pengembalian biaya pool (masuk nilai pool)"
+                        : "Biaya pool / operasional (mengurangi nilai pool)",
+                    ],
                     ["bukan_arus", "Bukan arus (dust, token spam)"],
                   ] as [Mode, string][]
                 ).map(([m, l]) => (
@@ -249,8 +282,8 @@ export default function Arus() {
                           checked={ikut.includes(x.id)}
                           onChange={(e) => setIkut(e.target.checked ? [...ikut, x.id] : ikut.filter((y) => y !== x.id))}
                         />
-                        <span>
-                          {waktu(x.waktu)} · {jumlahToken(x)} <span className="mu">· {x.alamatLawan}</span>
+                        <span style={{ overflowWrap: "anywhere" }}>
+                          {waktu(x.waktu)} · {jumlahToken(x)} <span className="mu">· {ringkasAlamat(x.alamatLawan)}</span>
                         </span>
                       </label>
                     </li>
@@ -264,7 +297,38 @@ export default function Arus() {
               <div className="field">
                 <span className="flabel" id="p-l">Permintaan</span>
                 {calon.length === 0 ? (
-                  <p className="note">Belum ada {buka.arah === "masuk" ? "setoran" : "penarikan"} yang menunggu. Pilih &ldquo;Buat permintaan untuk anggota&rdquo;.</p>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {selesaiTanpaArus.length > 0 && (
+                      <div className="banner warn">
+                        <p>
+                          Sudah ada {buka.arah === "masuk" ? "setoran" : "penarikan"} yang ditandai selesai manual tanpa tertaut transfer (
+                          <b>
+                            {nama(selesaiTanpaArus[0].anggotaId)} {usd(selesaiTanpaArus[0].jumlahFinalUsd ?? selesaiTanpaArus[0].jumlahUsd)}
+                          </b>
+                          ). Jangan pilih &ldquo;Buat permintaan untuk anggota&rdquo; agar tidak tercatat dobel.
+                        </p>
+                      </div>
+                    )}
+                    <p className="note">
+                      Belum ada {buka.arah === "masuk" ? "setoran" : "penarikan"} yang menunggu.
+                      {buka.arah === "masuk"
+                        ? ' Pilih "Buat permintaan untuk anggota" jika ini setoran, atau "Operasional / pengembalian biaya pool" jika ini pengembalian SOL gas.'
+                        : ' Pilih "Buat permintaan untuk anggota" jika belum ada permintaan.'}
+                    </p>
+                    {selesaiTanpaArus.length === 0 && (
+                      <button
+                        type="button"
+                        className="btn ton sm"
+                        style={{ justifySelf: "start" }}
+                        onClick={() => {
+                          setMode("buat");
+                          setErr({});
+                        }}
+                      >
+                        Pindah ke Buat permintaan
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <ul className="menu" role="radiogroup" aria-labelledby="p-l">
                     {[...calon]
@@ -275,19 +339,25 @@ export default function Arus() {
                             <input type="radio" name="pid" checked={pid === p.id} onChange={() => { setPid(p.id); setErr({}); }} />
                             <span>
                               {nama(p.anggotaId)} · {usd(p.jumlahUsd)} {saranId.has(p.id) && <span className="chip dicocokkan">Saran</span>}
+                              {p.alamatWalletTujuan && (
+                                <span className="mu" style={{ display: "block", fontSize: 12 }}>
+                                  Ke {ringkasAlamat(p.alamatWalletTujuan)}
+                                </span>
+                              )}
                             </span>
                           </label>
                         </li>
                       ))}
                   </ul>
                 )}
+                {err.pid && <p className="ferr" role="alert">{err.pid}</p>}
                 {pPilih && <p className="hint">Total transfer {usd(total)} · permintaan {usd(pPilih.jumlahUsd)}.</p>}
               </div>
             )}
             {mode === "cocok" && selisih && (
               <Field id="alasan" label="Alasan selisih jumlah" error={err.alasan} hint={`Wajib karena selisih lebih dari ${tol}%.`}>
                 <div className={`inp${err.alasan ? " err" : ""}`}>
-                  <input id="alasan" value={alasan} onChange={(e) => setAlasan(e.target.value)} aria-invalid={!!err.alasan} aria-describedby={describedBy("alasan", err.alasan, true)} />
+                  <input id="alasan" value={alasan} onChange={(e) => { setAlasan(e.target.value); if (err.alasan) setErr({}); }} aria-invalid={!!err.alasan} aria-describedby={describedBy("alasan", err.alasan, true)} />
                 </div>
               </Field>
             )}
@@ -321,10 +391,16 @@ export default function Arus() {
                 id="cat"
                 label="Catatan"
                 error={err.catatan}
-                hint={mode === "biaya" ? "Wajib. Contoh: biaya transaksi atau sewa akun. Nilainya mengurangi pool." : "Wajib. Contoh: token spam yang lolos ambang."}
+                hint={
+                  mode === "biaya"
+                    ? buka.arah === "masuk"
+                      ? "Wajib. Contoh: pengembalian SOL operasional/gas. Nilainya masuk ke pool tanpa mengubah porsi."
+                      : "Wajib. Contoh: biaya transaksi, gas, atau sewa akun. Nilainya mengurangi pool tanpa mengubah porsi."
+                    : "Wajib. Contoh: token spam yang lolos ambang."
+                }
               >
                 <div className={`inp${err.catatan ? " err" : ""}`}>
-                  <textarea id="cat" rows={2} maxLength={200} value={catatan} onChange={(e) => setCatatan(e.target.value)} aria-invalid={!!err.catatan} aria-describedby={describedBy("cat", err.catatan, true)} />
+                  <textarea id="cat" rows={2} maxLength={200} value={catatan} onChange={(e) => { setCatatan(e.target.value); if (err.catatan) setErr({}); }} aria-invalid={!!err.catatan} aria-describedby={describedBy("cat", err.catatan, true)} />
                 </div>
               </Field>
             )}
@@ -335,11 +411,22 @@ export default function Arus() {
               </p>
             )}
             <div className="btn-row">
-              <button type="button" className="btn ton" onClick={() => setBuka(null)}>
+              <button type="button" className="btn ton" onClick={() => setBuka(null)} disabled={sedangSimpan}>
                 Batal
               </button>
-              <button type="button" className="btn pri" onClick={simpan} disabled={offline || (mode === "cocok" && !pid)}>
-                {mode === "cocok" ? "Cocokkan" : mode === "buat" ? "Buat dan cocokkan" : "Simpan tanda"}
+              <button
+                type="button"
+                className="btn pri"
+                onClick={simpan}
+                disabled={offline || sedangSimpan || (mode === "cocok" && calon.length === 0)}
+              >
+                {sedangSimpan
+                  ? "Menyimpan…"
+                  : mode === "cocok"
+                    ? "Cocokkan"
+                    : mode === "buat"
+                      ? "Buat dan cocokkan"
+                      : "Simpan tanda"}
               </button>
             </div>
           </>

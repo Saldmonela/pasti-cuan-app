@@ -2,9 +2,10 @@
 // Store aplikasi Pasti Cuan: otomatis memakai Supabase + API Route Handlers di server/production,
 // dan fallback ke data contoh localStorage khusus saat build preview statis (`NEXT_PUBLIC_PROTOTYPE_MODE=1`).
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { batasMenitSebelumTransfer, validasiTanggalEfektifManual } from "./arus-matching";
 import { hitungPool, seriRentang, terapkanLive, type HasilPool, type Seri } from "./engine";
 import { isSolanaAddress, selisihHari, tambahHari, tanggal, usd, waktu, wibIso } from "./format";
-import { isoWib, MENIT, ms, msSnapshot, MULAI_BACA, semuaTitik, titikEstimasi, type TitikNilai } from "./onchain";
+import { isoWib, MENIT, ms, msSnapshot, MULAI_BACA, semuaTitik, titikEstimasi, titikTerakhir, type TitikNilai } from "./onchain";
 import { dataAwal, snapshotOtomatis, WAKTU_AWAL } from "./seed";
 import { createSupabaseBrowserClient } from "./supabase/client";
 import type { Anggota, ArusOnchain, DataPool, Jenis, LogAudit, ModeSatuan, Pengaturan, Peran, Permintaan, Rentang, Satuan, Snapshot } from "./types";
@@ -504,16 +505,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const jenis: Jenis = arah === "masuk" ? "setor" : "tarik";
       const alasanSelisih = a.alasanSelisih?.trim() || undefined;
+      const sortedPilih = [...pilih].sort((x, y) => ms(x.waktu) - ms(y.waktu));
+      const waktuTransfer = sortedPilih[sortedPilih.length - 1].waktu;
+      const totalRounded = Math.round(total * 100) / 100;
+      const bukti = sortedPilih.map((x) => x.signature).join(", ").slice(0, 100);
+      const titikBaca = titik.filter((t) => !t.estimasi && t.id != null);
+      const batasMs = ms(batasMenitSebelumTransfer(waktuTransfer)) - 1;
+      const titikRef =
+        titikTerakhir(titikBaca, batasMs) ??
+        titikTerakhir(titikBaca, ms(waktuTransfer)) ??
+        titikBaca[0];
+      if (!titikRef?.id) {
+        return { ok: false, pesan: "Belum ada titik nilai onchain untuk menilai transfer ini." };
+      }
+
       let p: Permintaan;
       if (a.status === "dicocokkan") {
         const ada = data.permintaan.find((x) => x.id === a.permintaanId);
         if (!ada || ada.status !== "menunggu") return { ok: false, pesan: "Permintaan ini sudah diproses. Muat ulang daftar." };
         if (ada.jenis !== jenis) return { ok: false, pesan: `Transfer ${arah} hanya bisa dicocokkan dengan ${arah === "masuk" ? "setoran" : "penarikan"}.` };
-        const selisih = (Math.abs(total - ada.jumlahUsd) / ada.jumlahUsd) * 100;
+        const selisih = (Math.abs(totalRounded - ada.jumlahUsd) / ada.jumlahUsd) * 100;
         if (selisih > data.pengaturan.toleransiCocokPersen && !a.alasanSelisih?.trim()) {
-          return { ok: false, pesan: `Jumlah transfer ${usd(total)} berbeda dari permintaan ${usd(ada.jumlahUsd)}. Isi alasan untuk melanjutkan.`, field: "alasan" };
+          return { ok: false, pesan: `Jumlah transfer ${usd(totalRounded)} berbeda dari permintaan ${usd(ada.jumlahUsd)}. Isi alasan untuk melanjutkan.`, field: "alasan" };
         }
-        p = ada;
+        p = {
+          ...ada,
+          status: "selesai",
+          waktuEfektif: waktuTransfer,
+          titikNilaiId: titikRef.id,
+          jumlahFinalUsd: totalRounded,
+          buktiTransaksi: bukti,
+          alasan: alasanSelisih ?? ada.alasan,
+          diprosesOleh: saya.id,
+          diprosesPada: kini(),
+        };
       } else {
         const idAng = a.anggotaId;
         const ang = data.anggota.find((x) => x.id === idAng);
@@ -525,26 +550,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           id: idBaru("p"),
           anggotaId: ang.id,
           jenis,
-          jumlahUsd: Math.round(total * 100) / 100,
-          tanggalTransfer: wibIso(pilih[0].waktu).slice(0, 10),
-          buktiTransaksi: pilih.map((x) => x.signature).join(", "),
-          status: "menunggu",
+          jumlahUsd: totalRounded,
+          tanggalTransfer: wibIso(waktuTransfer).slice(0, 10),
+          buktiTransaksi: bukti,
+          status: "selesai",
+          waktuEfektif: waktuTransfer,
+          titikNilaiId: titikRef.id,
+          jumlahFinalUsd: totalRounded,
+          alasan: alasanSelisih,
           sumber: "app",
           dibuatOleh: saya.id,
+          diprosesOleh: saya.id,
+          diprosesPada: kini(),
           dibuatPada: kini(),
         };
       }
+
       const nm = nama(p.anggotaId);
-      const label = `${jenis === "setor" ? "setoran" : "penarikan"} ${nm} ${usd(p.jumlahUsd)}`;
+      const nextPermintaan =
+        a.status === "buat" ? [...data.permintaan, p] : data.permintaan.map((x) => (x.id === p.id ? p : x));
+      const nextArus = data.arus.map((x) =>
+        ids.includes(x.id) ? { ...x, status: "dicocokkan" as const, permintaanId: p.id, alasanSelisih, ...ditandai } : x,
+      );
+      if (jenis === "tarik") {
+        const uji = hitungPool(data.anggota, data.snapshots, nextPermintaan, data.pengaturan, nextArus, titik);
+        if (uji.cek.penyebab.some((s) => s.startsWith(`Penarikan ${nm}`))) {
+          return { ok: false, pesan: `Jumlah transfer ${usd(totalRounded)} melebihi nilai bersih ${nm} saat transfer terjadi.` };
+        }
+      }
+
+      const label = `${jenis === "setor" ? "setoran" : "penarikan"} ${nm} ${usd(totalRounded)}`;
       ubah(
         (d) => ({
           ...d,
-          permintaan: a.status === "buat" ? [...d.permintaan, p] : d.permintaan,
+          permintaan: a.status === "buat" ? [...d.permintaan, p] : d.permintaan.map((x) => (x.id === p.id ? p : x)),
           arus: d.arus.map((x) => (ids.includes(x.id) ? { ...x, status: "dicocokkan", permintaanId: p.id, alasanSelisih, ...ditandai } : x)),
         }),
-        { tabel: "arus", aksi: "update", ringkasan: `${a.status === "buat" ? "Membuat permintaan dan mencocokkan" : "Mencocokkan"} transfer ${kapan} (${usd(total)}) dengan ${label}.`, nilaiLama: "belum", nilaiBaru: "dicocokkan" },
+        { tabel: "arus", aksi: "update", ringkasan: `${a.status === "buat" ? "Membuat permintaan dan mencocokkan" : "Mencocokkan"} transfer ${kapan} (${usd(totalRounded)}) dengan ${label} (efektif waktu transfer).`, nilaiLama: "belum", nilaiBaru: "dicocokkan" },
       );
-      return { ok: true, nilai: `Transfer ${kapan} dicocokkan dengan ${label}.` };
+      return { ok: true, nilai: `Transfer ${kapan} dicocokkan dengan ${label} (efektif waktu transfer).` };
     },
 
     async batalTandai(id) {
@@ -696,6 +740,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (saya?.peran !== "pengelola") return { ok: false, pesan: "Halaman ini khusus pengelola." };
       const p = data.permintaan.find((x) => x.id === id);
       if (!p || p.status !== "menunggu") return { ok: false, pesan: "Permintaan ini sudah diproses." };
+      const errTgl = validasiTanggalEfektifManual(p, q.tanggalEfektif, data.pengaturan.jamSnapshot);
+      if (errTgl) return { ok: false, pesan: errTgl, field: "tanggal" };
       if (!data.snapshots.some((s) => s.tanggal === q.tanggalEfektif)) {
         const jam = data.pengaturan.jamSnapshot.replace(":", ".");
         return {

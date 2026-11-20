@@ -14,13 +14,20 @@ type Filter = "menunggu" | "selesai" | "semua";
 type Aksi = { p: Permintaan; jenis: "selesai" | "tolak" };
 
 export default function AntreanPermintaan() {
-  const { saya, data, nama, selesaikan, tolak, tampilkan, offline, hasil, hariIni } = useStore();
+  const { saya, data, arusBelum, nama, selesaikan, tolak, tampilkan, offline, hasil, hariIni } = useStore();
   const jam = data.pengaturan.jamSnapshot;
   const arusDari = (p: Permintaan) => data.arus.filter((a) => a.permintaanId === p.id).sort((a, b) => (a.waktu < b.waktu ? -1 : 1));
+  const arusBelumSearah = (p: Permintaan) => arusBelum.filter((a) => (p.jenis === "setor" ? a.arah === "masuk" : a.arah === "keluar"));
   /** Isian awal "Tandai selesai": dari arus onchain yang dicocokkan bila ada (AC-13-01). */
   const isian = (p: Permintaan) => {
     const a = arusDari(p);
-    if (!a.length) return { tgl: hariIni, jumlah: angka(p.jumlahUsd, 2), bukti: "" };
+    if (!a.length) {
+      return {
+        tgl: p.jenis === "tarik" ? tanggalEfektifArus(p.dibuatPada, jam) : hariIni,
+        jumlah: angka(p.jumlahUsd, 2),
+        bukti: "",
+      };
+    }
     return {
       tgl: tanggalEfektifArus(a[a.length - 1].waktu, jam),
       jumlah: angka(a.reduce((t, x) => t + x.nilaiUsd, 0), 2),
@@ -40,6 +47,7 @@ export default function AntreanPermintaan() {
   const [jumlah, setJumlah] = useState(isiAwal?.jumlah ?? "");
   const [bukti, setBukti] = useState(isiAwal?.bukti ?? "");
   const [alasan, setAlasan] = useState("");
+  const [sedangProses, setSedangProses] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   if (!saya) return null;
   if (saya.peran !== "pengelola") return (<><BackBar judul="Permintaan" ke="/kelola" /><main><KhususPengelola /></main></>);
@@ -60,20 +68,32 @@ export default function AntreanPermintaan() {
   }
 
   async function proses() {
-    if (!aksi) return;
+    if (!aksi || sedangProses) return;
     const { p } = aksi;
     if (aksi.jenis === "tolak") {
-      const h = await tolak(p.id, alasan);
-      if (!h.ok) return setErr({ alasan: h.pesan });
-      tampilkan(`Permintaan ${nama(p.anggotaId)} ditolak.`);
-      return setAksi(null);
+      if (!alasan.trim()) return setErr({ alasan: "Alasan penolakan wajib diisi." });
+      setSedangProses(true);
+      try {
+        const h = await tolak(p.id, alasan);
+        if (!h.ok) return setErr({ alasan: h.pesan });
+        tampilkan(`Permintaan ${nama(p.anggotaId)} ditolak.`);
+        setAksi(null);
+      } finally {
+        setSedangProses(false);
+      }
+      return;
     }
     const j = parseAngka(jumlah);
     if (j === null || !(j > 0)) return setErr({ jumlah: "Jumlah harus lebih dari 0." });
-    const h = await selesaikan(p.id, { tanggalEfektif: tgl, jumlahFinalUsd: j, buktiTransaksi: bukti.trim() || undefined, alasan });
-    if (!h.ok) return setErr({ [h.field ?? "form"]: h.pesan });
-    tampilkan(`${p.jenis === "setor" ? "Setoran" : "Penarikan"} ${nama(p.anggotaId)} ${usd(j)} selesai. Semua posisi sudah diperbarui.`);
-    setAksi(null);
+    setSedangProses(true);
+    try {
+      const h = await selesaikan(p.id, { tanggalEfektif: tgl, jumlahFinalUsd: j, buktiTransaksi: bukti.trim() || undefined, alasan });
+      if (!h.ok) return setErr({ [h.field ?? "form"]: h.pesan });
+      tampilkan(`${p.jenis === "setor" ? "Setoran" : "Penarikan"} ${nama(p.anggotaId)} ${usd(j)} selesai. Semua posisi sudah diperbarui.`);
+      setAksi(null);
+    } finally {
+      setSedangProses(false);
+    }
   }
 
   const pAksi = aksi?.p;
@@ -120,12 +140,22 @@ export default function AntreanPermintaan() {
                           Transfer cocok: {usd(arusDari(p).reduce((t, x) => t + x.nilaiUsd, 0))} ({arusDari(p).length} transfer), efektif{" "}
                           {tanggal(tanggalEfektifArus(arusDari(p).at(-1)!.waktu, jam))}
                         </div>
+                      ) : arusBelumSearah(p).length > 0 ? (
+                        <div className="s">
+                          Ada {arusBelumSearah(p).length} transfer {p.jenis === "setor" ? "masuk" : "keluar"} belum dicocokkan.{" "}
+                          <Link href="/kelola/arus">Cocokkan di Arus onchain</Link>
+                        </div>
                       ) : (
                         <div className="s">
                           Belum ada transfer yang dicocokkan. <Link href="/kelola/arus">Lihat arus onchain</Link>
                         </div>
                       ))}
-                    {p.status === "selesai" && <div className="s up">Efektif {tanggal(p.tanggalEfektif!)} · {usd(p.jumlahFinalUsd!)}</div>}
+                    {p.status === "selesai" && (
+                      <div className="s up">
+                        Efektif {p.waktuEfektif ? waktu(p.waktuEfektif) : p.tanggalEfektif ? tanggal(p.tanggalEfektif) : "—"} ·{" "}
+                        {usd(p.jumlahFinalUsd ?? p.jumlahUsd)}
+                      </div>
+                    )}
                     {p.status === "ditolak" && <div className="s dn">Ditolak: {p.alasan}</div>}
                     {p.status === "menunggu" && (
                       <div className="acts">
@@ -162,16 +192,19 @@ export default function AntreanPermintaan() {
         )}
         {pAksi && aksi!.jenis === "selesai" && (
           <>
-            {pAksi.jenis === "tarik" && (
-              <div className="banner info" style={{ background: "var(--field)" }}>
-                <IconInfoCircle size={18} aria-hidden="true" />
-                <p>
-                  {arusDari(pAksi).length
-                    ? "Transfer keluar sudah terdeteksi dan dicocokkan. Jumlah, bukti, dan tanggal efektif terisi dari wallet."
-                    : `Transfer ${usd(pAksi.jumlahUsd)} di luar app dulu, lalu cocokkan di Arus onchain.`}{" "}
-                  Nilai bersih {nama(pAksi.anggotaId)} sekarang {usd(posInvestor?.netUsd ?? 0)}.
-                </p>
-              </div>
+            <div className="banner info" style={{ background: "var(--field)" }}>
+              <IconInfoCircle size={18} aria-hidden="true" />
+              <p>
+                {arusDari(pAksi).length
+                  ? "Transfer sudah terdeteksi dan dicocokkan. Jumlah, bukti, dan tanggal efektif terisi dari wallet."
+                  : `Untuk transfer onchain, tunggu ±5 menit setelah transfer lalu cocokkan di Arus onchain — permintaan akan otomatis selesai pada waktu transfer tanpa perlu isi manual di sini.`}{" "}
+                {pAksi.jenis === "tarik" && `Nilai bersih ${nama(pAksi.anggotaId)} sekarang ${usd(posInvestor?.netUsd ?? 0)}.`}
+              </p>
+            </div>
+            {!arusDari(pAksi).length && (
+              <Link href="/kelola/arus" className="btn ton sm" style={{ alignSelf: "flex-start" }}>
+                Buka Arus onchain
+              </Link>
             )}
             <Field
               id="tgl"
@@ -210,11 +243,11 @@ export default function AntreanPermintaan() {
         )}
         {err.form && <p className="ferr" role="alert">{err.form}</p>}
         <div className="btn-row">
-          <button type="button" className="btn ton" onClick={() => setAksi(null)}>
+          <button type="button" className="btn ton" onClick={() => setAksi(null)} disabled={sedangProses}>
             Batal
           </button>
-          <button type="button" className={`btn ${aksi?.jenis === "tolak" ? "danger" : "pri"}`} onClick={proses} disabled={offline}>
-            {aksi?.jenis === "tolak" ? "Tolak" : pAksi?.jenis === "setor" ? "Konfirmasi" : "Tandai selesai"}
+          <button type="button" className={`btn ${aksi?.jenis === "tolak" ? "danger" : "pri"}`} onClick={proses} disabled={offline || sedangProses}>
+            {sedangProses ? "Memproses…" : aksi?.jenis === "tolak" ? "Tolak" : pAksi?.jenis === "setor" ? "Konfirmasi" : "Tandai selesai"}
           </button>
         </div>
       </Sheet>

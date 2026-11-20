@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { validasiTanggalEfektifManual } from "@/lib/arus-matching";
 import { hitungPool } from "@/lib/engine";
 import { tanggal as fmtTanggal, usd } from "@/lib/format";
 import { msSnapshot } from "@/lib/onchain";
@@ -43,6 +44,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         throw new ApiError(422, "ATURAN_BISNIS", "Titik nilai referensi untuk transfer tidak ditemukan.");
       }
     } else {
+      if (tglEfektif) {
+        const errTgl = validasiTanggalEfektifManual(p, tglEfektif, ctx.pengaturan.jamSnapshot);
+        if (errTgl) {
+          throw new ApiError(422, "ATURAN_BISNIS", errTgl, { tanggal: errTgl });
+        }
+      }
       if (!tglEfektif || !ctx.snapshots.some((s) => s.tanggal === tglEfektif)) {
         const jam = ctx.pengaturan.jamSnapshot.replace(":", ".");
         const msg =

@@ -403,13 +403,14 @@ export function semuaTitik(): TitikNilai[] {
   if (cacheTitik) return cacheTitik;
   const out: TitikNilai[] = [];
   const wajib = new Set([T0, T_1303, ms("2026-11-15T08:00:00+07:00"), ms("2026-11-16T08:00:00+07:00")]);
+  let idSeq = 10_000;
   for (let t = T0; t <= AKHIR; t += MENIT) {
     const m = (t - T0) / MENIT;
     if (!wajib.has(t) && (m * 7919) % 211 === 0) continue; // menit gagal: tidak ada titik, tidak diisi angka karangan
     const h = harga(t);
     const { sol, usdc } = kepemilikan(t);
     const nilaiUsd = Math.round((sol * h + usdc) * 100) / 100;
-    out.push({ ms: t, nilaiUsd, saldoSol: nilaiUsd / h, harga: h });
+    out.push({ id: idSeq++, ms: t, nilaiUsd, saldoSol: nilaiUsd / h, harga: h });
   }
   cacheTitik = out;
   return out;
