@@ -41,8 +41,8 @@ android {
         applicationId = "id.pasticuan.wallet"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.0-beta"
+        versionCode = 8
+        versionName = "0.3.4-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

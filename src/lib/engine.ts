@@ -56,6 +56,13 @@ export interface Posisi {
   punyaSetoran: boolean;
 }
 
+export interface LebihBayar {
+  permintaanId: string;
+  anggotaId: string;
+  tanggal: Tanggal;
+  kurangFeeUsd: number;
+}
+
 export interface HasilPool {
   tanggalData: Tanggal | null;
   pool: { nilaiUsd: number; saldoSol: number; harga: number; harga1Unit: number; totalUnit: number };
@@ -65,6 +72,7 @@ export interface HasilPool {
   riwayatPool: TitikPool[];
   riwayat: Record<string, TitikSaya[]>;
   cek: { lolos: boolean; penyebab: string[] };
+  lebihBayar: LebihBayar[];
   /** Harga beli/jual 1 unit (NAV, BR-02) per tanggal snapshot. */
   nav: Record<Tanggal, number>;
   /** Unit dan modal tiap anggota sesudah tiap snapshot, dasar nilai live di antara dua snapshot. */
@@ -149,6 +157,7 @@ function terapkanTransaksi(
   set: Pengaturan,
   nama: Record<string, string>,
   penyebab: string[],
+  lebihBayar: LebihBayar[],
   arusAnggota: Record<string, Decimal>,
   txHari: TransaksiHari[],
 ) {
@@ -172,7 +181,8 @@ function terapkanTransaksi(
     const fee = feeDari(m, navSaat, hargaSolSaat, set, pengelola);
     const N = gross.sub(fee);
     if (w.gt(N.add(0.005))) {
-      penyebab.push(`Penarikan ${nama[t.anggotaId]} ${tglEfektif} melebihi nilai bersihnya.`);
+      lebihBayar.push({ permintaanId: t.id, anggotaId: t.anggotaId, tanggal: tglEfektif, kurangFeeUsd: Decimal.min(w.sub(N), fee).toNumber() });
+      if (w.gt(gross.add(0.005))) penyebab.push(`Penarikan ${nama[t.anggotaId]} ${tglEfektif} melebihi nilai bersihnya.`);
     }
     const f = N.isZero() ? D(1) : Decimal.min(1, w.div(N));
     const terjual = m.unit.mul(f);
@@ -212,6 +222,7 @@ export function hitungPool(
   const keadaan: Record<string, Keadaan> = {};
   const keadaanSaat: KeadaanSaat[] = [];
   const penyebab: string[] = [];
+  const lebihBayar: LebihBayar[] = [];
   const tanggalSnap = new Set(snaps.map((s) => s.tanggal));
   const titikById = new Map<number, TitikNilai>();
   for (const ti of titikReferensi) {
@@ -291,7 +302,7 @@ export function hitungPool(
       const txHari: TransaksiHari[] = [];
 
       for (const t of hari) {
-        terapkanTransaksi(t, navHari, hargaSol, s.tanggal, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, arusAnggota, txHari);
+        terapkanTransaksi(t, navHari, hargaSol, s.tanggal, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, lebihBayar, arusAnggota, txHari);
         settledIds.add(t.id);
       }
 
@@ -352,7 +363,7 @@ export function hitungPool(
       const arusAnggota: Record<string, Decimal> = {};
       const txHari: TransaksiHari[] = [];
       for (const t of ev.txs) {
-        terapkanTransaksi(t, navTx, hargaSol, tglTx, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, arusAnggota, txHari);
+        terapkanTransaksi(t, navTx, hargaSol, tglTx, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, lebihBayar, arusAnggota, txHari);
         settledIds.add(t.id);
       }
       hargaUnit = navTx;
@@ -403,6 +414,7 @@ export function hitungPool(
     riwayatPool,
     riwayat,
     cek: { lolos: penyebab.length === 0, penyebab },
+    lebihBayar,
     nav,
     keadaan,
     keadaanSaat,

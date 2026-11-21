@@ -137,6 +137,38 @@ describe("skenario tarik (BR-06)", () => {
     near(pos(h, "rezki").porsi, 0, 1e-6);
     near(h.pengelola.nilaiUnitFeeUsd, rezki.feeUsd);
     expect(h.cek.lolos).toBe(true);
+    expect(h.lebihBayar).toEqual([]);
+  });
+
+  it("satuan dasar fee diganti ke SOL sesudah tarik semua: kelebihan bayar jadi kurang fee pengelola, cek tetap lolos", () => {
+    const d = sampai14();
+    const rezki = pos(hitung(d), "rezki");
+    const sol = { ...d.pengaturan, satuanDasarFee: "SOL" as const };
+    const feeSol = pos(hitung({ ...d, pengaturan: sol }), "rezki").feeUsd;
+    d.permintaan.push(selesai("rezki", rezki.netUsd));
+    const akhir = d.snapshots[d.snapshots.length - 1];
+    const sisa = akhir.nilaiUsd - rezki.netUsd;
+    akhir.saldoSol *= sisa / akhir.nilaiUsd;
+    akhir.nilaiUsd = sisa;
+    const h = hitung({ ...d, pengaturan: sol });
+    expect(feeSol).toBeGreaterThan(rezki.feeUsd + 1);
+    expect(h.cek.lolos).toBe(true);
+    expect(h.lebihBayar).toHaveLength(1);
+    expect(h.lebihBayar[0]).toMatchObject({ permintaanId: "xrezki", anggotaId: "rezki", tanggal: "2026-11-14" });
+    near(h.lebihBayar[0].kurangFeeUsd, feeSol - rezki.feeUsd);
+    near(h.pengelola.nilaiUnitFeeUsd, rezki.feeUsd);
+    near(pos(h, "rezki").unit, 0, 1e-6);
+  });
+
+  it("penarikan melebihi nilai kotor tetap membuat cek gagal", () => {
+    const d = sampai14();
+    const rezki = pos(hitung(d), "rezki");
+    d.permintaan.push(selesai("rezki", rezki.grossUsd + 10));
+    d.snapshots[d.snapshots.length - 1].nilaiUsd = 2076.53 - rezki.grossUsd - 10;
+    const h = hitung(d);
+    expect(h.cek.lolos).toBe(false);
+    expect(h.cek.penyebab).toContain("Penarikan Rezki 2026-11-14 melebihi nilai bersihnya.");
+    near(h.lebihBayar[0].kurangFeeUsd, rezki.feeUsd);
   });
 
   it("tarik sebagian saat rugi: fee $0", () => {

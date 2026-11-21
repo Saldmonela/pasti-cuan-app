@@ -156,6 +156,15 @@ fun PoolScreen(
 
     val waktuKartu = kartuWaktuLiveText(hasil, data.pengaturan.jamSnapshot)
     val cekGagal = !hasil.cek.lolos || !resmi.cek.lolos
+    val kurangFee = hasil.lebihBayar.filter { it.kurangFeeUsd >= 0.005 }
+    val teksKurangFee = if (kurangFee.isEmpty()) null else {
+        val bagian = kurangFee.map { x ->
+            val nm = data.anggota.firstOrNull { it.id == x.anggotaId }?.nama ?: x.anggotaId
+            "$nm ${Formatters.tanggal(x.tanggal)}" + if (kurangFee.size > 1) " (${Formatters.usd(x.kurangFeeUsd)})" else ""
+        }
+        val daftar = if (bagian.size <= 2) bagian.joinToString(" dan ") else bagian.dropLast(1).joinToString(", ") + ", dan " + bagian.last()
+        "Fee ${pengelolaPos?.nama ?: "pengelola"} berkurang ${Formatters.usd(kurangFee.sumOf { it.kurangFeeUsd })} karena penarikan $daftar melebihi nilai bersihnya menurut aturan fee sekarang."
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -480,9 +489,17 @@ fun PoolScreen(
                         }
                     }
                 }
+                if (teksKurangFee != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = teksKurangFee,
+                        style = PastiCuanTheme.typography.caption.copy(fontFeatureSettings = "tnum"),
+                        color = c.inkMuted
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "Dicek setiap kali angka dihitung ulang: tidak ada unit negatif, tidak ada penarikan melebihi nilai bersih, setiap transaksi punya saldo harian, total nilai semua anggota sama dengan saldo pool, dan tidak ada transfer wallet yang belum dicatat sebelum snapshot terakhir.",
+                    text = "Dicek setiap kali angka dihitung ulang: tidak ada unit negatif, tidak ada penarikan melebihi nilai kotor, setiap transaksi punya saldo harian, total nilai semua anggota sama dengan saldo pool, dan tidak ada transfer wallet yang belum dicatat sebelum snapshot terakhir.",
                     style = PastiCuanTheme.typography.caption,
                     color = c.inkMuted
                 )

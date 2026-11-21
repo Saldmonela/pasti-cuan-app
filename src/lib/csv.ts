@@ -109,7 +109,8 @@ export function pratinjau(
   }
   if (!kesalahan.length) {
     const h = hitungPool(anggota, snapshots, transaksi, set);
-    h.cek.penyebab.forEach((p) => kesalahan.push({ file: "transaksi.csv", baris: 0, pesan: p }));
+    const lebih = h.lebihBayar.map((x) => `Penarikan ${anggota.find((a) => a.id === x.anggotaId)?.nama} ${x.tanggal} melebihi nilai bersihnya.`);
+    new Set([...h.cek.penyebab, ...lebih]).forEach((p) => kesalahan.push({ file: "transaksi.csv", baris: 0, pesan: p }));
   }
   const estimasi = !kesalahan.length && !opsi.pasarGagal ? titikEstimasi(snapshots, transaksi, MULAI_BACA, set.jamSnapshot).length : 0;
   return { snapshots, transaksi, kesalahan, peringatan, estimasi };

@@ -82,9 +82,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ctx.arusAll,
         ctx.titik,
       );
-      const ang = ctx.anggota.find((a) => a.id === p.anggotaId);
-      const nm = ang?.nama ?? p.anggotaId;
-      if (uji.cek.penyebab.some((s) => s.startsWith(`Penarikan ${nm}`))) {
+      if (uji.lebihBayar.some((x) => x.permintaanId === id)) {
         const pos = ctx.hasil.posisi.find((x) => x.id === p.anggotaId);
         throw new ApiError(
           422,

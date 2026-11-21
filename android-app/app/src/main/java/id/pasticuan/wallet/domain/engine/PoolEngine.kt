@@ -97,6 +97,13 @@ object PoolEngine {
         val penyebab: List<String>
     )
 
+    data class LebihBayar(
+        val permintaanId: String,
+        val anggotaId: String,
+        val tanggal: String,
+        val kurangFeeUsd: Double
+    )
+
     data class KondisiAnggotaSnap(
         val unit: Double,
         val modalUsd: Double,
@@ -140,6 +147,7 @@ object PoolEngine {
         val riwayatPool: List<TitikPool>,
         val riwayat: Map<String, List<TitikSaya>>,
         val cek: CekInvarian,
+        val lebihBayar: List<LebihBayar>,
         val nav: Map<String, Double>,
         val keadaan: Map<String, Keadaan>,
         val keadaanSaat: List<KeadaanSaat>,
@@ -254,6 +262,7 @@ object PoolEngine {
         set: Pengaturan,
         nama: Map<String, String>,
         penyebab: MutableList<String>,
+        lebihBayar: MutableList<LebihBayar>,
         arusAnggota: MutableMap<String, BigDecimal>,
         txHari: MutableList<TransaksiHari>
     ) {
@@ -274,7 +283,10 @@ object PoolEngine {
             val fee = feeDari(m, navSaat, hargaSolSaat, set, isPengelola)
             val n = gross.subtract(fee, MC)
             if (w > n.add(D(0.005), MC)) {
-                penyebab.add("Penarikan ${nama[t.anggotaId] ?: t.anggotaId} $tglEfektif melebihi nilai bersihnya.")
+                lebihBayar.add(LebihBayar(t.id, t.anggotaId, tglEfektif, w.subtract(n, MC).min(fee).toDouble()))
+                if (w > gross.add(D(0.005), MC)) {
+                    penyebab.add("Penarikan ${nama[t.anggotaId] ?: t.anggotaId} $tglEfektif melebihi nilai bersihnya.")
+                }
             }
             val f = if (n.compareTo(ZERO) == 0) ONE else ONE.min(w.divide(n, MC))
             val terjual = m.unit.multiply(f, MC)
@@ -317,6 +329,7 @@ object PoolEngine {
         val keadaan = mutableMapOf<String, Keadaan>()
         val keadaanSaat = mutableListOf<KeadaanSaat>()
         val penyebab = mutableListOf<String>()
+        val lebihBayar = mutableListOf<LebihBayar>()
         val tanggalSnap = snaps.map { it.tanggal }.toSet()
         val titikById = titikReferensi.mapNotNull { ti -> ti.id?.let { it to ti } }.toMap()
 
@@ -388,7 +401,7 @@ object PoolEngine {
                     val txHari = mutableListOf<TransaksiHari>()
 
                     for (t in hari) {
-                        terapkanTransaksi(t, navHari, hargaSol, s.tanggal, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, arusAnggota, txHari)
+                        terapkanTransaksi(t, navHari, hargaSol, s.tanggal, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, lebihBayar, arusAnggota, txHari)
                         settledIds.add(t.id)
                     }
 
@@ -464,7 +477,7 @@ object PoolEngine {
                     val arusAnggota = mutableMapOf<String, BigDecimal>()
                     val txHari = mutableListOf<TransaksiHari>()
                     for (t in ev.txs) {
-                        terapkanTransaksi(t, navTx, hargaSol, tglTx, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, arusAnggota, txHari)
+                        terapkanTransaksi(t, navTx, hargaSol, tglTx, k, totalRef, unitFeeRef, idPengelola, set, nama, penyebab, lebihBayar, arusAnggota, txHari)
                         settledIds.add(t.id)
                     }
                     hargaUnit = navTx
@@ -517,6 +530,7 @@ object PoolEngine {
             riwayatPool = riwayatPool,
             riwayat = riwayat,
             cek = CekInvarian(lolos = penyebab.isEmpty(), penyebab = penyebab),
+            lebihBayar = lebihBayar,
             nav = nav,
             keadaan = keadaan,
             keadaanSaat = keadaanSaat,

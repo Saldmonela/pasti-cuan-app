@@ -7,3 +7,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Catatan verifikasi
+
+- Mesin hitung web (`src/lib/engine.ts`) dan Android (`android-app/app/src/main/java/id/pasticuan/wallet/domain/engine/PoolEngine.kt`) wajib diubah bersamaan. Tes: `npm test` di root dan `./gradlew :app:testDebugUnitTest --offline` di `android-app/`.
+- Di mesin ini `java` di PATH masih JDK 16, sedangkan Gradle butuh JDK 17+. Jalankan dengan `JAVA_HOME="$HOME/.jdks/temurin-21"`.

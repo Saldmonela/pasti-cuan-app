@@ -574,7 +574,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
       if (jenis === "tarik") {
         const uji = hitungPool(data.anggota, data.snapshots, nextPermintaan, data.pengaturan, nextArus, titik);
-        if (uji.cek.penyebab.some((s) => s.startsWith(`Penarikan ${nm}`))) {
+        if (uji.lebihBayar.some((x) => x.permintaanId === p.id)) {
           return { ok: false, pesan: `Jumlah transfer ${usd(totalRounded)} melebihi nilai bersih ${nm} saat transfer terjadi.` };
         }
       }
@@ -769,8 +769,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
       if (p.jenis === "tarik") {
         const uji = hitungPool(data.anggota, data.snapshots, data.permintaan.map((x) => (x.id === id ? final : x)), data.pengaturan);
-        const nm = nama(p.anggotaId);
-        if (uji.cek.penyebab.some((s) => s.startsWith(`Penarikan ${nm}`))) {
+        if (uji.lebihBayar.some((x) => x.permintaanId === id)) {
           const sebelum = hitungPool(
             data.anggota,
             data.snapshots.filter((s) => s.tanggal <= q.tanggalEfektif),

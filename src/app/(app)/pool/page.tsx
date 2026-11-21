@@ -5,13 +5,13 @@ import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck, IconInfoCircle } from "@tabler/icons-react";
 import KartuGrafik, { useWaktuLive } from "@/components/KartuGrafik";
 import { GagalMuat, Memuat, PageHeader, StatusBanners } from "@/components/ui";
-import { arah, bertanda, persen, uang, usd } from "@/lib/format";
+import { arah, bertanda, persen, tanggal, uang, usd } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Rentang } from "@/lib/types";
 import { grafikKosong, opsiRentang, WARNA_PORSI } from "@/lib/view";
 
 export default function Pool() {
-  const { saya, hasil, mode, setMode, skenario, cekGagal, data, arus, seri: seriRentang, setSkenario } = useStore();
+  const { saya, hasil, mode, setMode, skenario, cekGagal, data, arus, nama, seri: seriRentang, setSkenario } = useStore();
   const [rentang, setRentang] = useState<Rentang>("24J");
   const [info, setInfo] = useState(false);
   const waktuLive = useWaktuLive();
@@ -44,6 +44,7 @@ export default function Pool() {
       p.id === saya.id ? "var(--forest-ink)" : WARNA_PORSI[k++ % 4],
     ]),
   );
+  const kurangFee = hasil.lebihBayar.filter((x) => x.kurangFeeUsd >= 0.005);
   const masalah = skenario === "cekGagal" && hasil.cek.lolos
     ? ["Ada 1 masalah: penarikan Rezki 14 Nov 2026 melebihi nilai bersihnya. Pengelola sedang memeriksa."]
     : hasil.cek.penyebab;
@@ -175,8 +176,17 @@ export default function Pool() {
               </div>
             </div>
           )}
+          {kurangFee.length > 0 && (
+            <p className="note num" style={{ marginTop: 10 }}>
+              Fee {pengelola?.nama ?? "pengelola"} berkurang {usd(kurangFee.reduce((a, x) => a + x.kurangFeeUsd, 0))} karena penarikan{" "}
+              {new Intl.ListFormat("id").format(
+                kurangFee.map((x) => `${nama(x.anggotaId)} ${tanggal(x.tanggal)}${kurangFee.length > 1 ? ` (${usd(x.kurangFeeUsd)})` : ""}`),
+              )}{" "}
+              melebihi nilai bersihnya menurut aturan fee sekarang.
+            </p>
+          )}
           <p className="note" style={{ marginTop: 10 }}>
-            Dicek setiap kali angka dihitung ulang: tidak ada unit negatif, tidak ada penarikan melebihi nilai bersih, setiap transaksi punya
+            Dicek setiap kali angka dihitung ulang: tidak ada unit negatif, tidak ada penarikan melebihi nilai kotor, setiap transaksi punya
             saldo harian, total nilai semua anggota sama dengan saldo pool, dan tidak ada transfer wallet yang belum dicatat sebelum snapshot
             terakhir.
           </p>

@@ -158,10 +158,11 @@ export async function POST(request: Request) {
     const nm = ctx.anggota.find((x) => x.id === anggotaId)?.nama ?? anggotaId ?? "";
 
     // Validasi BR-09 untuk penarikan sebelum menyimpan
+    const idUji = permintaanId ?? "sim_baru";
     const simPermintaan = [
       ...ctx.permintaan.filter((x) => x.id !== permintaanId),
       {
-        id: permintaanId ?? "sim_baru",
+        id: idUji,
         anggotaId: anggotaId!,
         jenis,
         jumlahUsd: totalUsd,
@@ -175,10 +176,10 @@ export async function POST(request: Request) {
     ];
     if (jenis === "tarik") {
       const simArus = ctx.arusAll.map((a) =>
-        ids.includes(a.id) ? { ...a, status: "dicocokkan" as const, permintaanId: permintaanId ?? "sim_baru" } : a,
+        ids.includes(a.id) ? { ...a, status: "dicocokkan" as const, permintaanId: idUji } : a,
       );
       const uji = hitungPool(ctx.anggota, ctx.snapshots, simPermintaan, ctx.pengaturan, simArus, ctx.titik);
-      if (uji.cek.penyebab.some((s) => s.startsWith(`Penarikan ${nm}`))) {
+      if (uji.lebihBayar.some((x) => x.permintaanId === idUji)) {
         throw new ApiError(
           422,
           "ATURAN_BISNIS",

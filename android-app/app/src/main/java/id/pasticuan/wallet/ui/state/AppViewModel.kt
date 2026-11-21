@@ -831,7 +831,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         if (target.jenis == Jenis.TARIK) {
             val uji = PoolEngine.hitungPool(d.anggota, d.snapshots, updatedPermintaan, d.pengaturan, d.arus, s.titik)
-            if (uji.cek.penyebab.any { it.startsWith("Penarikan $namaPemilik") }) {
+            if (uji.lebihBayar.any { it.permintaanId == permintaanId }) {
                 val netNow = s.hasil?.posisi?.firstOrNull { it.id == target.anggotaId }?.netUsd ?: 0.0
                 return "Nilai bersih investor sekarang ${Formatters.usd(netNow)}, kurang dari ${Formatters.usd(jumlahFinalUsd)} yang diminta."
             }
@@ -1047,7 +1047,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         if (jenis == Jenis.TARIK) {
             val uji = PoolEngine.hitungPool(d.anggota, d.snapshots, listPermintaanBaru, d.pengaturan, updatedArus, s.titik)
-            if (uji.cek.penyebab.any { it.startsWith("Penarikan $namaAnggota") }) {
+            if (uji.lebihBayar.any { it.permintaanId == finalPermintaanId }) {
                 return "Jumlah transfer ${Formatters.usd(totalUsd)} melebihi nilai bersih $namaAnggota saat transfer terjadi."
             }
         }

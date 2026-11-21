@@ -3,7 +3,10 @@ package id.pasticuan.wallet
 import id.pasticuan.wallet.domain.engine.OnchainSimulator
 import id.pasticuan.wallet.domain.engine.PoolEngine
 import id.pasticuan.wallet.domain.engine.SeedData
+import id.pasticuan.wallet.domain.model.Jenis
+import id.pasticuan.wallet.domain.model.Permintaan
 import id.pasticuan.wallet.domain.model.Rentang
+import id.pasticuan.wallet.domain.model.Satuan
 import id.pasticuan.wallet.domain.model.StatusArus
 import id.pasticuan.wallet.domain.model.StatusPermintaan
 import id.pasticuan.wallet.domain.util.Formatters
@@ -107,6 +110,54 @@ class PoolEngineTest {
         assertEquals(250.0, hafiz.modalUsd, 0.01)
         // Kini Hafiz punya 2 setoran selesai -> opsi Setoran Terakhir otomatis muncul!
         assertTrue(Rentang.SETORAN_TERAKHIR in PoolEngine.opsiRentang(updatedPermintaan, "hafiz"))
+    }
+
+    private fun tarikRezki14Nov(jumlah: Double) = Permintaan(
+        id = "xrezki",
+        anggotaId = "rezki",
+        jenis = Jenis.TARIK,
+        jumlahUsd = jumlah,
+        status = StatusPermintaan.SELESAI,
+        tanggalEfektif = "2026-11-14",
+        jumlahFinalUsd = jumlah,
+        dibuatPada = "2026-11-14T10:00:00+07:00"
+    )
+
+    @Test
+    fun gantiSatuanFeeKeSolSesudahTarikSemuaJadiKurangFeeBukanCekGagal() {
+        val seed = SeedData.buatDataAwal(OnchainSimulator(loadHargaPasarJson()))
+        val snaps = seed.snapshots.filter { it.tanggal <= "2026-11-14" }
+        val sol = seed.pengaturan.copy(satuanDasarFee = Satuan.SOL)
+        val rezki = PoolEngine.hitungPool(seed.anggota, snaps, seed.permintaan, seed.pengaturan).posisi.first { it.id == "rezki" }
+        val feeSol = PoolEngine.hitungPool(seed.anggota, snaps, seed.permintaan, sol).posisi.first { it.id == "rezki" }.feeUsd
+        val akhir = snaps.last()
+        val sisa = akhir.nilaiUsd - rezki.netUsd
+        val snapsSesudah = snaps.dropLast(1) + akhir.copy(nilaiUsd = sisa, saldoSol = akhir.saldoSol * sisa / akhir.nilaiUsd)
+
+        val h = PoolEngine.hitungPool(seed.anggota, snapsSesudah, seed.permintaan + tarikRezki14Nov(rezki.netUsd), sol)
+
+        assertTrue(feeSol > rezki.feeUsd + 1)
+        assertTrue("Cek harus lolos: ${h.cek.penyebab}", h.cek.lolos)
+        assertEquals(1, h.lebihBayar.size)
+        assertEquals("xrezki", h.lebihBayar[0].permintaanId)
+        assertEquals("2026-11-14", h.lebihBayar[0].tanggal)
+        assertEquals(feeSol - rezki.feeUsd, h.lebihBayar[0].kurangFeeUsd, 0.01)
+        assertEquals(rezki.feeUsd, h.pengelola.nilaiUnitFeeUsd, 0.01)
+    }
+
+    @Test
+    fun penarikanMelebihiNilaiKotorTetapMembuatCekGagal() {
+        val seed = SeedData.buatDataAwal(OnchainSimulator(loadHargaPasarJson()))
+        val snaps = seed.snapshots.filter { it.tanggal <= "2026-11-14" }
+        val rezki = PoolEngine.hitungPool(seed.anggota, snaps, seed.permintaan, seed.pengaturan).posisi.first { it.id == "rezki" }
+        val jumlah = rezki.grossUsd + 10
+        val snapsSesudah = snaps.dropLast(1) + snaps.last().copy(nilaiUsd = snaps.last().nilaiUsd - jumlah)
+
+        val h = PoolEngine.hitungPool(seed.anggota, snapsSesudah, seed.permintaan + tarikRezki14Nov(jumlah), seed.pengaturan)
+
+        assertFalse(h.cek.lolos)
+        assertTrue(h.cek.penyebab.contains("Penarikan Rezki 2026-11-14 melebihi nilai bersihnya."))
+        assertEquals(rezki.feeUsd, h.lebihBayar[0].kurangFeeUsd, 0.01)
     }
 
     @Test
