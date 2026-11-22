@@ -32,9 +32,6 @@ export async function GET() {
       },
       titik: ctx.titik,
       arusBelumCount: ctx.arusBelumCount,
-      jobLog: isManager ? ctx.jobLog : [],
-      hasil: ctx.hasil,
-      resmi: ctx.resmi,
     });
   } catch (err) {
     return jsonError(err);

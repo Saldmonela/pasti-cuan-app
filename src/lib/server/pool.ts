@@ -22,21 +22,28 @@ type TitikRow = {
   harga_sol_usd: number | string;
 };
 
-/** PostgREST membatasi 1.000 baris per query; ambil bertahap agar titik live terbaru tidak terpotong. */
+/** PostgREST membatasi 1.000 baris per query; halaman pertama sekaligus menghitung total, sisanya diambil paralel. */
 async function fetchAllTitikNilai(admin: ReturnType<typeof createSupabaseAdmin>): Promise<TitikRow[]> {
   const PAGE = 1000;
-  const rows: TitikRow[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await admin
+  const halaman = (from: number, count?: "exact") =>
+    admin
       .from("titik_nilai")
-      .select("id, dibaca_pada, resolusi, sumber, nilai_usd, saldo_sol, harga_sol_usd")
+      .select("id, dibaca_pada, resolusi, sumber, nilai_usd, saldo_sol, harga_sol_usd", count ? { count } : undefined)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
-    if (error) throw new Error(`Gagal memuat titik nilai: ${error.message}`);
-    if (!data?.length) break;
-    rows.push(...data);
-    if (data.length < PAGE) break;
+
+  const pertama = await halaman(0, "exact");
+  if (pertama.error) throw new Error(`Gagal memuat titik nilai: ${pertama.error.message}`);
+  const total = pertama.count ?? 0;
+  const sisa = await Promise.all(
+    Array.from({ length: Math.max(0, Math.ceil(total / PAGE) - 1) }, (_, k) => halaman((k + 1) * PAGE)),
+  );
+  const unik = new Map<number, TitikRow>();
+  for (const res of [pertama, ...sisa]) {
+    if (res.error) throw new Error(`Gagal memuat titik nilai: ${res.error.message}`);
+    for (const r of res.data ?? []) unik.set(r.id, r);
   }
+  const rows = [...unik.values()];
   rows.sort((a, b) => Date.parse(a.dibaca_pada) - Date.parse(b.dibaca_pada));
   return rows;
 }

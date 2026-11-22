@@ -23,6 +23,7 @@
   --warning-ink: #5a4300;
   --field: #f1f3ef;
   --skeleton: #eceee9;
+  --skeleton-sheen: rgb(255 255 255 / 0.6);
 
   --r-swatch: 3px;
   --r-tooltip: 10px;
@@ -233,7 +234,11 @@ dialog.sheet::backdrop { background: rgb(14 15 12 / 0.45); }
 .toast svg { color: var(--lime-action); flex: none; margin-top: 1px; }
 
 /* ---------- kerangka loading ---------- */
-.sk { background: var(--skeleton); border-radius: 8px; }
+.sk { position: relative; overflow: hidden; background: var(--skeleton); border-radius: 8px; }
+.sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, var(--skeleton-sheen), transparent); animation: sk-shimmer 1.4s ease-in-out infinite; }
+@keyframes sk-shimmer { to { transform: translateX(100%); } }
+html[data-lg-reduce-motion="on"] .sk::after { display: none; }
+@media (prefers-reduced-motion: reduce) { .sk::after { display: none; } }
 
 /* ---------- kosong & error ---------- */
 .empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-md); }
@@ -321,6 +326,7 @@ html[data-theme="dark"] {
   --warning-ink: #ffd466;
   --field: #1e241c;
   --skeleton: #20261e;
+  --skeleton-sheen: rgb(255 255 255 / 0.05);
 
   --shadow-float: 0 16px 36px -10px rgb(0 0 0 / 0.68);
   --shadow-tooltip: 0 10px 24px -8px rgb(0 0 0 / 0.65);

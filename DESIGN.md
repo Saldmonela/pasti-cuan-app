@@ -24,6 +24,7 @@ colors:
   warning-ink: "#5A4300"
   field: "#F1F3EF"
   skeleton: "#ECEEE9"
+  skeleton-sheen: "#FFFFFF99"
   dark-canvas: "#0C0F0B"
   dark-card: "#151914"
   dark-field: "#1E241C"
@@ -277,7 +278,7 @@ Palet sage dan hijau yang kalem, dengan satu warna limau terang sebagai tanda ak
 
 ### Surface
 - **Kolom Isian** (`field`): latar kolom isian di dalam kartu putih, supaya kolom terlihat tanpa garis tepi.
-- **Kerangka** (`skeleton`): blok abu-abu saat memuat. Tidak berkedip dan tidak bergerak.
+- **Kerangka** (`skeleton`): blok abu-abu saat memuat, dengan kilau halus (`skeleton-sheen`) yang menyapu dari kiri ke kanan tiap 1,4 detik supaya pengguna tahu data sedang diambil. Kilau dimatikan bila `Kurangi animasi` atau `prefers-reduced-motion` aktif; bloknya tetap diam dan tidak berkedip.
 
 ### Mode Gelap (Wise Forest Obsidian)
 Saat tema `Gelap` aktif (atau mengikuti sistem perangkat), palet memetakan ulang peran semantik tanpa menggeser tata letak sedikit pun:
@@ -395,7 +396,7 @@ Tegas tapi ramah. Tingginya 48px, sudutnya 24px, labelnya Title 600 15px dengan 
 - Hari dengan setoran atau penarikan: lingkaran putih radius 4px dengan tepi hijau hutan 2px (AC-12-01).
 - Saat disentuh atau digeser: garis vertikal putus-putus (3 3) warna tinta redup, titik terpilih radius 5.5px, dan tooltip gelap di atas grafik berisi tanggal, nilai dalam satuan aktif, nilai dalam satuan lain, harga SOL, dan transaksi hari itu.
 - Bisa dikendalikan keyboard (panah kiri/kanan, Home, End, Esc). Gerakan jari vertikal tetap menggulir halaman.
-- Saat data dimuat atau rentang diganti, garis tergambar dari kiri dalam 700ms (`cubic-bezier(.16, 1, .3, 1)`), dan animasi ini dimatikan bila pengguna memilih `prefers-reduced-motion`. Ini satu-satunya momen animasi yang disengaja.
+- Saat data dimuat atau rentang diganti, garis tergambar dari kiri dalam 700ms (`cubic-bezier(.16, 1, .3, 1)`), dan animasi ini dimatikan bila pengguna memilih `prefers-reduced-motion`. Selain kilau kerangka saat memuat, ini satu-satunya momen animasi yang disengaja.
 
 ### Rincian Nilai ("Dari mana nilai kamu")
 Kartu yang menunjukkan asal angka dalam bentuk hitungan dari atas ke bawah.
@@ -480,4 +481,4 @@ Ditetapkan oleh prototype (form Setor, Tarik, saldo harian, anggota, pengaturan)
 - **Don't** pakai hijau limau sebagai warna teks di atas putih atau sage, karena kontrasnya tidak terbaca.
 - **Don't** tambahkan font kedua atau font mono untuk angka. Cukup Inter dengan digit tabular.
 - **Don't** pakai tab bar yang menempel penuh di bawah layar. Navigasi Beranda memakai pil melayang.
-- **Don't** tambahkan animasi dekoratif di luar garis grafik yang tergambar, umpan balik tekan tombol, dan transisi fisik kapsul indikator yang menghormati pengaturan `Kurangi animasi` / `prefers-reduced-motion`.
+- **Don't** tambahkan animasi dekoratif di luar garis grafik yang tergambar, kilau kerangka saat memuat, umpan balik tekan tombol, dan transisi fisik kapsul indikator yang menghormati pengaturan `Kurangi animasi` / `prefers-reduced-motion`.
