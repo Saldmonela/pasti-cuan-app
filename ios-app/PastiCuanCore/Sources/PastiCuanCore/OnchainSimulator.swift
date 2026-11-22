@@ -6,7 +6,7 @@ public final class OnchainSimulator: @unchecked Sendable {
     public static let menit: Int64 = 60_000
     public static let alamatPool = "By6HpsukcTeVsV6FyBzhQJ2nzdHP46kXaSPtrCGUzoaR"
     static let programDlmm = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
-    static let porsiEstimasi = 0.5
+    public static let porsiEstimasi = 0.5
 
     public static let t0 = Formatters.ms("2026-11-14T08:00:00+07:00")
     public static let mulaiBaca = t0
