@@ -546,7 +546,8 @@ html[data-theme="dark"] .lg-switch[aria-checked="true"] .lg-switch-thumb {
 .lg-prog-blur,
 .lg-nav-surface,
 .lg-nav-rim,
-.lg-slider {
+.lg-slider,
+.lg-glass {
   display: none;
 }
 
@@ -626,10 +627,21 @@ html[data-liquid-glass="on"] .tabs > .lg-slider {
 }
 html[data-liquid-glass="on"] .nav > .lg-slider {
   transition:
-    opacity 0.15s ease,
     background 0.16s ease,
     box-shadow 0.16s ease,
     border-color 0.16s ease;
+}
+/* Kaca terangkat: mengikuti kapsul, opacity = --pill-presence dari pegas (crossfade halus saat mendarat) */
+html[data-liquid-glass="on"] .nav > .lg-glass {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  border-radius: var(--r-pill);
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, width, height, opacity;
 }
 
 /* ---------- 3. Navigasi Melayang (.nav) — Kaca Netral Kalem (~35% Vibrancy) ---------- */
@@ -676,8 +688,11 @@ html[data-liquid-glass="on"] .nav::after {
 html[data-liquid-glass="on"][data-lg-nav-compact="true"] .nav {
   transform: scale(0.955) translateY(3px);
 }
-html[data-liquid-glass="on"] .nav:hover {
-  transform: scale(1) translateY(0);
+/* Hanya untuk mouse: di layar sentuh :hover "nyangkut" setelah tap dan membatalkan nav mengecil saat scroll */
+@media (hover: hover) and (pointer: fine) {
+  html[data-liquid-glass="on"] .nav:hover {
+    transform: scale(1) translateY(0);
+  }
 }
 html[data-liquid-glass="on"] .nav a {
   z-index: 2;
@@ -739,11 +754,10 @@ html:not([data-theme="dark"])[data-liquid-glass="on"] .nav > .lg-slider {
 }
 html:not([data-theme="dark"])[data-liquid-glass="on"]:not([data-lg-perf="on"])
   .nav
-  > .lg-slider[data-lifted="true"] {
-  z-index: 4;
-  background: linear-gradient(165deg, rgb(255 255 255 / 0.28) 0%, rgb(255 255 255 / 0.08) 100%);
+  > .lg-glass {
+  background: linear-gradient(165deg, rgb(159 232 112 / 0.22) 0%, rgb(159 232 112 / 0.06) 100%);
   border: 1px solid rgb(255 255 255 / 0.92);
-  outline: 1px solid rgb(0 0 0 / 0.09);
+  outline: 1px solid rgb(22 51 0 / 0.12);
   -webkit-backdrop-filter: saturate(125%) brightness(102%);
   backdrop-filter: url(#ios26-pill-magnifier) saturate(128%) brightness(102%);
   box-shadow:
@@ -800,10 +814,9 @@ html[data-theme="dark"][data-liquid-glass="on"] .nav > .lg-slider {
 }
 html[data-theme="dark"][data-liquid-glass="on"]:not([data-lg-perf="on"])
   .nav
-  > .lg-slider[data-lifted="true"] {
-  z-index: 4;
-  background: linear-gradient(165deg, rgb(255 255 255 / 0.10) 0%, rgb(255 255 255 / 0.03) 100%);
-  border: 1px solid rgb(255 255 255 / 0.36);
+  > .lg-glass {
+  background: linear-gradient(165deg, rgb(162 227 120 / 0.13) 0%, rgb(162 227 120 / 0.03) 100%);
+  border: 1px solid rgb(205 240 180 / 0.42);
   -webkit-backdrop-filter: saturate(128%) brightness(105%);
   backdrop-filter: url(#ios26-pill-magnifier) saturate(130%) brightness(105%);
   box-shadow:
@@ -1062,7 +1075,7 @@ html[data-lg-engine="webkit"][data-liquid-glass="on"]:not([data-lg-perf="on"]) .
 }
 html[data-lg-engine="webkit"][data-liquid-glass="on"]:not([data-lg-perf="on"])
   .nav
-  > .lg-slider[data-lifted="true"] {
+  > .lg-glass {
   -webkit-backdrop-filter: blur(1px) saturate(135%) brightness(110%) contrast(106%);
   backdrop-filter: blur(1px) saturate(135%) brightness(110%) contrast(106%);
 }

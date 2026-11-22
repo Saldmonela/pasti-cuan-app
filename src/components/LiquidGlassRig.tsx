@@ -107,7 +107,7 @@ function syncControlPill(container: HTMLElement, activeSelector: string, reduceM
   }
 }
 
-function ensureNavLayers(nav: HTMLElement): { surface: HTMLElement; pill: HTMLElement } {
+function ensureNavLayers(nav: HTMLElement): { surface: HTMLElement; pill: HTMLElement; glass: HTMLElement } {
   let surface = nav.querySelector<HTMLElement>(":scope > .lg-nav-surface");
   if (!surface) {
     surface = document.createElement("span");
@@ -129,7 +129,15 @@ function ensureNavLayers(nav: HTMLElement): { surface: HTMLElement; pill: HTMLEl
     pill.setAttribute("aria-hidden", "true");
     rim.insertAdjacentElement("afterend", pill);
   }
-  return { surface, pill };
+  // Kaca terangkat dipisah dari kapsul diam supaya keduanya bisa di-crossfade, bukan berganti dalam satu frame.
+  let glass = nav.querySelector<HTMLElement>(":scope > .lg-glass");
+  if (!glass) {
+    glass = document.createElement("span");
+    glass.className = "lg-glass";
+    glass.setAttribute("aria-hidden", "true");
+    pill.insertAdjacentElement("afterend", glass);
+  }
+  return { surface, pill, glass };
 }
 
 function clientXToTabPos(nav: HTMLElement, clientX: number): number {
@@ -189,10 +197,11 @@ export default function LiquidGlassRig() {
     const renderNavFrame = (frame: PillFrame) => {
       const nav = document.querySelector<HTMLElement>(".nav");
       if (!nav || !kacaRef.current.liquidGlass) return;
-      const { pill } = ensureNavLayers(nav);
+      const { pill, glass } = ensureNavLayers(nav);
       const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>("a[href]"));
       if (links.length === 0) {
         pill.style.opacity = "0";
+        glass.style.opacity = "0";
         return;
       }
 
@@ -227,10 +236,14 @@ export default function LiquidGlassRig() {
       const x = cx - liveW / 2;
       const y = cy - liveH / 2;
 
-      pill.style.opacity = "1";
-      pill.style.width = `${liveW.toFixed(2)}px`;
-      pill.style.height = `${liveH.toFixed(2)}px`;
-      pill.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
+      const kaca = kacaRef.current.betterPerformance ? 0 : frame.glassPresence;
+      pill.style.opacity = (1 - kaca).toFixed(3);
+      glass.style.opacity = kaca.toFixed(3);
+      for (const el of [pill, glass]) {
+        el.style.width = `${liveW.toFixed(2)}px`;
+        el.style.height = `${liveH.toFixed(2)}px`;
+        el.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
+      }
       pill.style.setProperty("--pill-material", frame.material.toFixed(3));
       pill.style.setProperty("--pill-presence", frame.glassPresence.toFixed(3));
       pill.style.setProperty("--pill-rim", frame.rimAlpha.toFixed(3));
@@ -277,7 +290,8 @@ export default function LiquidGlassRig() {
             if (!m.isDragging) {
               if (activeIdx !== m.index) {
                 m.animateTo(activeIdx);
-              } else {
+              } else if (!m.isAnimating) {
+                // Jangan potong pegas lepas-geser saat aria-current berganti karena pindah halaman.
                 m.snapTo(activeIdx);
               }
             }
@@ -489,24 +503,28 @@ export default function LiquidGlassRig() {
           <filter id="ios26-bevel-lens" x="-12%" y="-12%" width="124%" height="124%" colorInterpolationFilters="sRGB">
             <feGaussianBlur in="SourceGraphic" stdDeviation="4.5" edgeMode="duplicate" result="blurred" />
             <feImage ref={pillMapRef} x="0%" y="0%" width="100%" height="100%" preserveAspectRatio="none" result="bevel" />
-            <feDisplacementMap in="blurred" in2="bevel" scale="-25.5" xChannelSelector="R" yChannelSelector="G" result="dispR" />
-            <feDisplacementMap in="blurred" in2="bevel" scale="-24" xChannelSelector="R" yChannelSelector="G" result="dispG" />
-            <feDisplacementMap in="blurred" in2="bevel" scale="-22.5" xChannelSelector="R" yChannelSelector="G" result="dispB" />
-            <feColorMatrix in="dispR" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="chR" />
-            <feColorMatrix in="dispG" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="chG" />
-            <feColorMatrix in="dispB" type="matrix" values="0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="chB" />
-            <feBlend in="chR" in2="chG" mode="screen" result="rg" />
-            <feBlend in="rg" in2="chB" mode="screen" />
+            {/* Badan navbar tanpa pelangi RGB: pemisahan kanal di sini memunculkan garis biru/kuning di tepi atas */}
+            <feDisplacementMap in="blurred" in2="bevel" scale="-24" xChannelSelector="R" yChannelSelector="G" />
           </filter>
 
-          <filter id="ios26-pill-magnifier" x="-14%" y="-18%" width="128%" height="136%" colorInterpolationFilters="sRGB">
-            <feImage ref={magnifierMapRef} x="0%" y="0%" width="100%" height="100%" preserveAspectRatio="none" result="mag" />
-            <feDisplacementMap in="SourceGraphic" in2="mag" scale="-19" xChannelSelector="R" yChannelSelector="G" result="mR" />
-            <feDisplacementMap in="SourceGraphic" in2="mag" scale="-17.5" xChannelSelector="R" yChannelSelector="G" result="mG" />
-            <feDisplacementMap in="SourceGraphic" in2="mag" scale="-16" xChannelSelector="R" yChannelSelector="G" result="mB" />
+          {/* objectBoundingBox: peta lensa menempel tepat di kapsul; userSpaceOnUse membuat isi kapsul turun & tidak sejajar */}
+          <filter
+            id="ios26-pill-magnifier"
+            x="-14%"
+            y="-18%"
+            width="128%"
+            height="136%"
+            primitiveUnits="objectBoundingBox"
+            colorInterpolationFilters="sRGB"
+          >
+            <feImage ref={magnifierMapRef} x="0" y="0" width="1" height="1" preserveAspectRatio="none" result="mag" />
+            <feDisplacementMap in="SourceGraphic" in2="mag" scale="-0.1" xChannelSelector="R" yChannelSelector="G" result="lens" />
+            {/* Pelangi RGB: merah & biru digeser ±~1px (relatif ukuran kapsul) di sekitar hijau, tanpa menggeser isi */}
+            <feOffset in="lens" dx="-0.01" dy="-0.017" result="mR" />
+            <feOffset in="lens" dx="0.01" dy="0.017" result="mB" />
             <feColorMatrix in="mR" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="mcR" />
-            <feColorMatrix in="mG" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="mcG" />
-            <feColorMatrix in="mB" type="matrix" values="0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="mcB" />
+            <feColorMatrix in="lens" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="mcG" />
+            <feColorMatrix in="mB" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="mcB" />
             <feBlend in="mcR" in2="mcG" mode="screen" result="mRG" />
             <feBlend in="mRG" in2="mcB" mode="screen" />
           </filter>

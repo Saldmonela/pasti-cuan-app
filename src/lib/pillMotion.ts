@@ -12,8 +12,8 @@ export interface PillFrame {
   isDragging: boolean;
 }
 
-const TRAVEL_STIFFNESS = 280.0;
-const TRAVEL_DAMPING = 31.4;
+const TRAVEL_STIFFNESS = 230.0;
+const TRAVEL_DAMPING = 29.0;
 const FLAT_DAMPING = 36.0;
 
 const LIFT_STIFFNESS = 250.0;
@@ -23,8 +23,8 @@ const LIFT_DAMPING_Y = 22.1;
 const MATERIAL_STIFFNESS = 1000.0;
 const MATERIAL_DAMPING = 63.3;
 
-const HANDOVER_START = 0.91;
-const HANDOVER_TAU = 0.09;
+const HANDOVER_START = 0.97;
+const HANDOVER_TAU = 0.11;
 const GLASS_RETURN_TAU = 0.045;
 const FOLLOW_TAU = 0.045;
 const SIGN_TAU = 0.25;
@@ -177,6 +177,10 @@ export class GlassPillMotion {
 
   get isDragging(): boolean {
     return this.dragging;
+  }
+
+  get isAnimating(): boolean {
+    return this.rafId !== 0;
   }
 
   animateTo(next: number) {
