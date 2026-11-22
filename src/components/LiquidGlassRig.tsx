@@ -57,53 +57,112 @@ function supportsSvgBackdropLens(): boolean {
   return /Chrome\/|Chromium\/|Edg\/|OPR\/|SamsungBrowser\//i.test(ua);
 }
 
-function syncControlPill(container: HTMLElement, activeSelector: string, reduceMotion: boolean) {
-  const active = container.querySelector<HTMLElement>(activeSelector);
+const KONTROL = ".seg, .tabs";
+const AKTIF_KONTROL = 'button[aria-pressed="true"], button[aria-checked="true"]';
+
+function lapisan(kelas: string): HTMLElement {
+  const el = document.createElement("span");
+  el.className = kelas;
+  el.setAttribute("aria-hidden", "true");
+  return el;
+}
+
+/** Item yang bisa dipilih kapsul: tautan di navigasi, tombol di kontrol segmen/tab. */
+function itemsOf(host: HTMLElement): HTMLElement[] {
+  return Array.from(host.querySelectorAll<HTMLElement>(host.classList.contains("nav") ? "a[href]" : ":scope > button"));
+}
+
+/** Geser jari hanya masuk akal bila semua item berada di satu baris (.seg bisa wrap di layar sempit). */
+function satuBaris(items: HTMLElement[]): boolean {
+  return items.every((b) => Math.abs(b.offsetTop - items[0].offsetTop) < 4);
+}
+
+function ensureControlLayers(container: HTMLElement): { pill: HTMLElement; glass: HTMLElement } {
   let pill = container.querySelector<HTMLElement>(":scope > .lg-slider");
-
-  if (!active || active.offsetWidth === 0) {
-    if (pill) pill.style.opacity = "0";
-    return;
-  }
-
-  const isFirst = !pill || pill.style.opacity === "0";
   if (!pill) {
-    pill = document.createElement("span");
-    pill.className = "lg-slider";
-    pill.setAttribute("aria-hidden", "true");
+    pill = lapisan("lg-slider");
     container.prepend(pill);
   }
-
-  const nextLeft = active.offsetLeft;
-  const nextTop = active.offsetTop;
-  const nextW = active.offsetWidth;
-  const nextH = active.offsetHeight;
-
-  const prevLeft = Number(pill.dataset.x ?? nextLeft);
-  const moved = !isFirst && Math.abs(nextLeft - prevLeft) > 2;
-
-  pill.dataset.x = String(nextLeft);
-  pill.style.opacity = "1";
-  pill.style.width = `${nextW}px`;
-  pill.style.height = `${nextH}px`;
-
-  if (isFirst || reduceMotion) {
-    pill.style.transition = "none";
-    pill.style.transform = `translate3d(${nextLeft}px, ${nextTop}px, 0) scale(1, 1)`;
-    pill.getBoundingClientRect();
-    pill.style.transition = reduceMotion ? "none" : "";
-    return;
+  let glass = container.querySelector<HTMLElement>(":scope > .lg-glass");
+  if (!glass) {
+    glass = lapisan("lg-glass");
+    pill.insertAdjacentElement("afterend", glass);
   }
+  return { pill, glass };
+}
 
-  if (moved) {
-    pill.style.transform = `translate3d(${nextLeft}px, ${nextTop}px, 0) scaleX(1.06) scaleY(0.95)`;
-    window.clearTimeout(Number(pill.dataset.t || 0));
-    const tid = window.setTimeout(() => {
-      if (pill) pill.style.transform = `translate3d(${nextLeft}px, ${nextTop}px, 0) scale(1, 1)`;
-    }, 150);
-    pill.dataset.t = String(tid);
-  } else {
-    pill.style.transform = `translate3d(${nextLeft}px, ${nextTop}px, 0) scale(1, 1)`;
+interface OpsiGambar {
+  grow: [number, number];
+  /** Navigasi: kapsul diam memudar saat kaca muncul. Kontrol segmen: kapsul hijau tetap terlihat di bawah kaca. */
+  pudarkanDiam: boolean;
+  ringan: boolean;
+}
+
+/** Menggambar satu frame pegas ke kapsul diam (.lg-slider) dan kaca terangkat (.lg-glass). */
+function gambarKapsul(
+  host: HTMLElement,
+  items: HTMLElement[],
+  pill: HTMLElement,
+  glass: HTMLElement,
+  frame: PillFrame,
+  motion: GlassPillMotion | undefined,
+  opsi: OpsiGambar,
+) {
+  const maxIdx = items.length - 1;
+  const firstCenter = items[0].offsetLeft + items[0].offsetWidth / 2;
+  const lastCenter = items[maxIdx].offsetLeft + items[maxIdx].offsetWidth / 2;
+  const stepPx = maxIdx > 0 ? (lastCenter - firstCenter) / maxIdx : items[0].offsetWidth;
+  if (motion) motion.stepPx = stepPx;
+
+  const clamped = Math.max(0, Math.min(maxIdx, frame.position));
+  const i0 = Math.floor(clamped);
+  const i1 = Math.min(maxIdx, i0 + 1);
+  const t = clamped - i0;
+  const over = frame.position - clamped;
+
+  const a0 = items[i0];
+  const a1 = items[i1];
+  const cx0 = a0.offsetLeft + a0.offsetWidth / 2;
+  const cx1 = a1.offsetLeft + a1.offsetWidth / 2;
+  const cy0 = a0.offsetTop + a0.offsetHeight / 2;
+  const cy1 = a1.offsetTop + a1.offsetHeight / 2;
+
+  const cx = cx0 + (cx1 - cx0) * t + over * stepPx;
+  const cy = cy0 + (cy1 - cy0) * t;
+  const restW = a0.offsetWidth + (a1.offsetWidth - a0.offsetWidth) * t;
+  const restH = a0.offsetHeight + (a1.offsetHeight - a0.offsetHeight) * t;
+
+  const [growW, growH] = opsi.grow;
+  const liveW = Math.max(24, (restW + growW * frame.liftX) * (1 + frame.deviation));
+  const liveH = Math.max(24, (restH + growH * frame.liftY) * (1 - frame.deviation));
+  const x = cx - liveW / 2;
+  const y = cy - liveH / 2;
+
+  const kaca = opsi.ringan ? 0 : frame.glassPresence;
+  pill.style.opacity = opsi.pudarkanDiam ? (1 - kaca).toFixed(3) : "1";
+  glass.style.opacity = kaca.toFixed(3);
+  for (const el of [pill, glass]) {
+    el.style.width = `${liveW.toFixed(2)}px`;
+    el.style.height = `${liveH.toFixed(2)}px`;
+    el.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
+  }
+  pill.style.setProperty("--pill-material", frame.material.toFixed(3));
+  pill.style.setProperty("--pill-presence", frame.glassPresence.toFixed(3));
+  pill.style.setProperty("--pill-rim", frame.rimAlpha.toFixed(3));
+  pill.dataset.lifted = frame.glassPresence > 0.025 ? "true" : "false";
+
+  if (frame.isDragging) {
+    host.dataset.lgDragging = "true";
+    const aimIdx = Math.round(clamped);
+    items.forEach((a, idx) => {
+      if (idx === aimIdx) a.dataset.pillAim = "true";
+      else delete a.dataset.pillAim;
+    });
+  } else if (host.dataset.lgDragging === "true") {
+    delete host.dataset.lgDragging;
+    items.forEach((a) => {
+      delete a.dataset.pillAim;
+    });
   }
 }
 
@@ -140,11 +199,11 @@ function ensureNavLayers(nav: HTMLElement): { surface: HTMLElement; pill: HTMLEl
   return { surface, pill, glass };
 }
 
-function clientXToTabPos(nav: HTMLElement, clientX: number): number {
-  const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>("a[href]"));
+function clientXToTabPos(host: HTMLElement, clientX: number): number {
+  const links = itemsOf(host);
   if (links.length <= 1) return 0;
-  const r = nav.getBoundingClientRect();
-  const sx = (nav.offsetWidth || r.width) / (r.width || 1);
+  const r = host.getBoundingClientRect();
+  const sx = (host.offsetWidth || r.width) / (r.width || 1);
   const localX = (clientX - r.left) * sx;
   const centers = links.map((a) => a.offsetLeft + a.offsetWidth / 2);
 
@@ -173,6 +232,7 @@ export default function LiquidGlassRig() {
   const circleMapRef = useRef<SVGFEImageElement>(null);
   const motionRef = useRef<GlassPillMotion | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
+  const kontrolRef = useRef(new Map<HTMLElement, GlassPillMotion>());
   const kacaRef = useRef(kaca);
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
@@ -198,70 +258,64 @@ export default function LiquidGlassRig() {
       const nav = document.querySelector<HTMLElement>(".nav");
       if (!nav || !kacaRef.current.liquidGlass) return;
       const { pill, glass } = ensureNavLayers(nav);
-      const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>("a[href]"));
+      const links = itemsOf(nav);
       if (links.length === 0) {
         pill.style.opacity = "0";
         glass.style.opacity = "0";
         return;
       }
+      gambarKapsul(nav, links, pill, glass, frame, motionRef.current ?? undefined, {
+        grow: [10, 10],
+        pudarkanDiam: true,
+        ringan: kacaRef.current.betterPerformance,
+      });
+    };
 
-      const maxIdx = links.length - 1;
-      const firstCenter = links[0].offsetLeft + links[0].offsetWidth / 2;
-      const lastCenter = links[maxIdx].offsetLeft + links[maxIdx].offsetWidth / 2;
-      const stepPx = maxIdx > 0 ? (lastCenter - firstCenter) / maxIdx : links[0].offsetWidth;
-      if (motionRef.current) motionRef.current.stepPx = stepPx;
+    const kontrol = kontrolRef.current;
+    const renderKontrolFrame = (el: HTMLElement, frame: PillFrame) => {
+      if (!el.isConnected || !kacaRef.current.liquidGlass) return;
+      const items = itemsOf(el);
+      if (items.length === 0) return;
+      const { pill, glass } = ensureControlLayers(el);
+      gambarKapsul(el, items, pill, glass, frame, kontrol.get(el), {
+        grow: [8, 6],
+        pudarkanDiam: false,
+        ringan: kacaRef.current.betterPerformance,
+      });
+    };
 
-      const clamped = Math.max(0, Math.min(maxIdx, frame.position));
-      const i0 = Math.floor(clamped);
-      const i1 = Math.min(maxIdx, i0 + 1);
-      const t = clamped - i0;
-      const over = frame.position - clamped;
-
-      const a0 = links[i0];
-      const a1 = links[i1];
-      const cx0 = a0.offsetLeft + a0.offsetWidth / 2;
-      const cx1 = a1.offsetLeft + a1.offsetWidth / 2;
-      const cy0 = a0.offsetTop + a0.offsetHeight / 2;
-      const cy1 = a1.offsetTop + a1.offsetHeight / 2;
-
-      const cx = cx0 + (cx1 - cx0) * t + over * stepPx;
-      const cy = cy0 + (cy1 - cy0) * t;
-      const restW = a0.offsetWidth + (a1.offsetWidth - a0.offsetWidth) * t;
-      const restH = a0.offsetHeight + (a1.offsetHeight - a0.offsetHeight) * t;
-
-      const growW = 10;
-      const growH = 10;
-      const liveW = Math.max(24, (restW + growW * frame.liftX) * (1 + frame.deviation));
-      const liveH = Math.max(24, (restH + growH * frame.liftY) * (1 - frame.deviation));
-      const x = cx - liveW / 2;
-      const y = cy - liveH / 2;
-
-      const kaca = kacaRef.current.betterPerformance ? 0 : frame.glassPresence;
-      pill.style.opacity = (1 - kaca).toFixed(3);
-      glass.style.opacity = kaca.toFixed(3);
-      for (const el of [pill, glass]) {
-        el.style.width = `${liveW.toFixed(2)}px`;
-        el.style.height = `${liveH.toFixed(2)}px`;
-        el.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
+    const syncKontrol = () => {
+      for (const [el, m] of kontrol) {
+        if (!el.isConnected) {
+          m.destroy();
+          kontrol.delete(el);
+        }
       }
-      pill.style.setProperty("--pill-material", frame.material.toFixed(3));
-      pill.style.setProperty("--pill-presence", frame.glassPresence.toFixed(3));
-      pill.style.setProperty("--pill-rim", frame.rimAlpha.toFixed(3));
-      pill.dataset.lifted = frame.glassPresence > 0.025 ? "true" : "false";
-
-      if (frame.isDragging) {
-        nav.dataset.lgDragging = "true";
-        const aimIdx = Math.round(clamped);
-        links.forEach((a, idx) => {
-          if (idx === aimIdx) a.dataset.pillAim = "true";
-          else delete a.dataset.pillAim;
-        });
-      } else if (nav.dataset.lgDragging === "true") {
-        delete nav.dataset.lgDragging;
-        links.forEach((a) => {
-          delete a.dataset.pillAim;
-        });
-      }
+      document.querySelectorAll<HTMLElement>(KONTROL).forEach((el) => {
+        const items = itemsOf(el);
+        const activeIdx = items.findIndex((b) => b.matches(AKTIF_KONTROL));
+        const { pill, glass } = ensureControlLayers(el);
+        if (activeIdx < 0 || items[activeIdx].offsetWidth === 0) {
+          pill.style.opacity = "0";
+          glass.style.opacity = "0";
+          kontrol.get(el)?.destroy();
+          kontrol.delete(el);
+          return;
+        }
+        let m = kontrol.get(el);
+        const baru = !m;
+        if (!m) {
+          m = new GlassPillMotion(activeIdx, (f) => renderKontrolFrame(el, f));
+          kontrol.set(el, m);
+        }
+        m.physicsEnabled = kacaRef.current.pillPhysics;
+        m.reduceMotion = kacaRef.current.reduceMotion;
+        if (baru) m.snapTo(activeIdx);
+        else if (!m.isDragging) {
+          if (activeIdx !== m.index) m.animateTo(activeIdx);
+          else if (!m.isAnimating) m.snapTo(activeIdx);
+        }
+      });
     };
 
     const syncAll = () => {
@@ -303,12 +357,7 @@ export default function LiquidGlassRig() {
         navRef.current = null;
       }
 
-      document.querySelectorAll<HTMLElement>(".seg").forEach((el) => {
-        syncControlPill(el, 'button[aria-pressed="true"], button[aria-checked="true"]', kacaRef.current.reduceMotion);
-      });
-      document.querySelectorAll<HTMLElement>(".tabs").forEach((el) => {
-        syncControlPill(el, 'button[aria-pressed="true"]', kacaRef.current.reduceMotion);
-      });
+      syncKontrol();
     };
 
     const raf = requestAnimationFrame(syncAll);
@@ -327,6 +376,8 @@ export default function LiquidGlassRig() {
       cancelAnimationFrame(raf);
       mo.disconnect();
       window.removeEventListener("resize", syncAll);
+      kontrol.forEach((m) => m.destroy());
+      kontrol.clear();
     };
   }, [kaca.liquidGlass, kaca.pillPhysics, kaca.reduceMotion, kaca.betterPerformance, pathname, temaAktif]);
 
@@ -341,13 +392,15 @@ export default function LiquidGlassRig() {
     let compact = false;
 
     interface DragSession {
-      nav: HTMLElement;
+      host: HTMLElement;
+      isNav: boolean;
       pointerId: number;
       startX: number;
       startY: number;
       started: boolean;
     }
     let drag: DragSession | null = null;
+    const motionOf = (s: DragSession) => (s.isNav ? motionRef.current : kontrolRef.current.get(s.host)) ?? null;
 
     const onScroll = () => {
       const y = window.scrollY;
@@ -373,11 +426,17 @@ export default function LiquidGlassRig() {
     const onPointerDown = (e: PointerEvent) => {
       if (!kacaRef.current.liquidGlass || !kacaRef.current.pillPhysics) return;
       if (e.button !== 0) return;
-      const nav = (e.target as HTMLElement | null)?.closest?.(".nav") as HTMLElement | null;
-      if (!nav) return;
+      const host = (e.target as HTMLElement | null)?.closest?.(`.nav, ${KONTROL}`) as HTMLElement | null;
+      if (!host) return;
+      const isNav = host.classList.contains("nav");
+      if (!isNav) {
+        const items = itemsOf(host);
+        if (items.length < 2 || !satuBaris(items) || items.some((b) => (b as HTMLButtonElement).disabled)) return;
+      }
 
       drag = {
-        nav,
+        host,
+        isNav,
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
@@ -389,26 +448,26 @@ export default function LiquidGlassRig() {
       if (drag && drag.pointerId === e.pointerId) {
         const dx = e.clientX - drag.startX;
         const dy = e.clientY - drag.startY;
-        const links = Array.from(drag.nav.querySelectorAll<HTMLAnchorElement>("a[href]"));
-        const maxIdx = Math.max(0, links.length - 1);
+        const maxIdx = Math.max(0, itemsOf(drag.host).length - 1);
+        const m = motionOf(drag);
 
         if (!drag.started) {
           if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
             drag = null;
-          } else if (Math.abs(dx) > 5 && motionRef.current) {
+          } else if (Math.abs(dx) > 5 && m) {
             drag.started = true;
             try {
-              drag.nav.setPointerCapture(e.pointerId);
+              drag.host.setPointerCapture(e.pointerId);
             } catch {
               /* ignore */
             }
-            const pos = clientXToTabPos(drag.nav, e.clientX);
-            motionRef.current.startDrag(pos);
-            motionRef.current.dragTo(pos, maxIdx);
+            const pos = clientXToTabPos(drag.host, e.clientX);
+            m.startDrag(pos);
+            m.dragTo(pos, maxIdx);
           }
-        } else if (motionRef.current) {
-          const pos = clientXToTabPos(drag.nav, e.clientX);
-          motionRef.current.dragTo(pos, maxIdx);
+        } else if (m) {
+          const pos = clientXToTabPos(drag.host, e.clientX);
+          m.dragTo(pos, maxIdx);
         }
       }
 
@@ -436,29 +495,38 @@ export default function LiquidGlassRig() {
       const session = drag;
       drag = null;
 
-      if (!session.started || !motionRef.current) return;
+      const m = motionOf(session);
+      if (!session.started || !m) return;
 
-      delete session.nav.dataset.lgDragging;
-      session.nav.querySelectorAll<HTMLElement>("a[href]").forEach((a) => {
+      const links = itemsOf(session.host);
+      delete session.host.dataset.lgDragging;
+      links.forEach((a) => {
         delete a.dataset.pillAim;
       });
 
       if (cancelled) {
-        motionRef.current.release(motionRef.current.index);
+        m.release(m.index);
         return;
       }
 
+      const pos = clientXToTabPos(session.host, e.clientX);
+      const targetIdx = Math.max(0, Math.min(links.length - 1, Math.round(pos)));
+      m.release(targetIdx);
+
+      // Kontrol segmen: pilih tombol tujuan lewat klik programatik (state React yang mengubah aria-pressed/checked).
+      if (!session.isNav) {
+        const tujuan = links[targetIdx];
+        if (tujuan && !tujuan.matches(AKTIF_KONTROL)) tujuan.click();
+      }
+
+      // Telan klik bawaan dari pointerup supaya tombol/tautan di bawah jari tidak ikut terpicu.
       const eatClick = (ce: MouseEvent) => {
         ce.preventDefault();
         ce.stopPropagation();
       };
       window.addEventListener("click", eatClick, true);
       window.setTimeout(() => window.removeEventListener("click", eatClick, true), 90);
-
-      const links = Array.from(session.nav.querySelectorAll<HTMLAnchorElement>("a[href]"));
-      const pos = clientXToTabPos(session.nav, e.clientX);
-      const targetIdx = Math.max(0, Math.min(links.length - 1, Math.round(pos)));
-      motionRef.current.release(targetIdx);
+      if (!session.isNav) return;
 
       const href = links[targetIdx]?.getAttribute("href");
       if (href) {

@@ -37,6 +37,17 @@ export default function Beranda() {
   const kosong = grafikKosong(seri, rentang, riwayat.length);
   const sayaMenunggu = s.menunggu.filter((p) => p.anggotaId === saya.id);
   const lainSaya = hasil.posisi.filter((p) => p.unit > 1e-9 || p.id === saya.id).sort((a, b) => b.porsi - a.porsi);
+  // Kartu "Dari mana nilai kamu" mengikuti satuan aktif; Bandingkan menampilkan SOL di bawah tiap angka USD.
+  const pakaiSol = satuan === "SOL";
+  const feeSol = hasil.pool.harga > 0 ? pos.feeUsd / hasil.pool.harga : 0;
+  const roi = pakaiSol ? (pos.modalSol > 1e-12 ? (pos.profitSol / pos.modalSol) * 100 : 0) : pos.roi;
+  const minus = (x: number, d: number, teks: string) => (Math.round(x * 10 ** d) > 0 ? "−" : "") + teks;
+  const nilai = (teksUsd: string, teksSol: string, selaluKedua = false) => (
+    <>
+      {pakaiSol ? teksSol : teksUsd}
+      {(selaluKedua || mode === "Bandingkan") && <small>{pakaiSol ? teksUsd : teksSol}</small>}
+    </>
+  );
 
   return (
     <>
@@ -108,26 +119,25 @@ export default function Beranda() {
               <dl className="kv">
                 <div>
                   <dt>Modal dasar</dt>
-                  <dd>{usd(pos.modalUsd)}</dd>
+                  <dd>{nilai(usd(pos.modalUsd), uang(pos.modalSol, "SOL"))}</dd>
                 </div>
                 <div>
                   <dt>
-                    Untung/rugi <span className={`tag ${arah(pos.roi)}`}>ROI {persenBertanda(pos.roi)}</span>
+                    Untung/rugi <span className={`tag ${arah(roi)}`}>ROI {persenBertanda(roi)}</span>
                   </dt>
-                  <dd className={arah(pos.profitUsd)}>{bertanda(pos.profitUsd, "USD")}</dd>
+                  <dd className={pakaiSol ? arah(pos.profitSol, 4) : arah(pos.profitUsd)}>
+                    {nilai(bertanda(pos.profitUsd, "USD"), bertanda(pos.profitSol, "SOL"))}
+                  </dd>
                 </div>
                 <div>
                   <dt>
                     Fee terutang <span className="mu">{persen(s.data.pengaturan.feePersen * 100).replace(",00", "")}</span>
                   </dt>
-                  <dd>{pos.feeUsd > 0.004 ? "−" : ""}{usd(pos.feeUsd)}</dd>
+                  <dd>{nilai(minus(pos.feeUsd, 2, usd(pos.feeUsd)), minus(feeSol, 4, uang(feeSol, "SOL")))}</dd>
                 </div>
                 <div className="tot">
                   <dt>Nilai bersih</dt>
-                  <dd>
-                    {usd(pos.netUsd)}
-                    <small>{uang(pos.netSol, "SOL")}</small>
-                  </dd>
+                  <dd>{nilai(usd(pos.netUsd), uang(pos.netSol, "SOL"), true)}</dd>
                 </div>
               </dl>
               <p className="note" style={{ marginTop: 10 }}>

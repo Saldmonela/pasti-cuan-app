@@ -363,6 +363,7 @@ Tegas tapi ramah. Tingginya 48px, sudutnya 24px, labelnya Title 600 15px dengan 
 - **Trek:** latar kanvas sage, sudut 24px, padding 3px.
 - **Opsi:** tinggi 30px, padding 0 12px, 12.5px 600, warna tinta redup. Saat hover berubah jadi tinta.
 - **Terpilih:** latar hijau hutan, teks hijau limau, bayangan "opsi terangkat". Perpindahan warna 150ms.
+- **Liquid Glass:** kapsul terpilih memakai pegas yang sama dengan navigasi. Saat di-tap, ditahan, atau digeser jari, kaca terangkat (`lg-glass`) muncul di atas kapsul hijau dengan lensa, pelangi RGB halus, dan tepi berkilau, lalu melebur kembali saat mendarat. Melepas jari memilih opsi terdekat. Kapsul hijau tetap terlihat di bawah kaca supaya teks limau selalu terbaca. Geser hanya aktif bila semua opsi berada di satu baris.
 - **Satuan** (PRD v1.2): segmented control 3 ikon di kanan atas kartu, sejajar label: "$" (USD), logo Solana (SOL), dan "$ + logo Solana" (Bandingkan). Tiap tombol minimal 44 × 44px dan punya nama aksesibel ("Tampilkan dalam USD", dst.). Pilihan dipakai bersama di semua grafik.
 - **Rentang** (24J | 7H | 30H | Semua, default 24J) berada di bawah grafik, di atas tombol Setor/Tarik.
 
@@ -404,6 +405,7 @@ Kartu yang menunjukkan asal angka dalam bentuk hitungan dari atas ke bawah.
 - Untung/rugi diberi tag ROI di samping labelnya.
 - Fee terutang diberi keterangan "10%" berwarna tinta redup.
 - Baris total dipisah garis 2px tinta, lalu "Nilai bersih" dengan angka Figure Total dan nilai SOL kecil (Caption, tinta redup) di bawahnya.
+- Mengikuti kontrol Satuan: **USD** seperti di atas; **SOL** menampilkan semua baris dalam SOL (ROI dihitung dari modal SOL) dengan nilai USD kecil di bawah Nilai bersih; **Bandingkan** menampilkan USD dengan angka SOL kecil di bawah setiap baris.
 
 ### Tag ROI
 - Pil kecil (padding 2px 8px), Tag 600 11px, tidak pernah terlipat ke baris kedua.
