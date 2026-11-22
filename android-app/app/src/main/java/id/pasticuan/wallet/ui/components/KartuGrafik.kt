@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +55,8 @@ import id.pasticuan.wallet.domain.model.ModeSatuan
 import id.pasticuan.wallet.domain.model.Rentang
 import id.pasticuan.wallet.domain.model.Satuan
 import id.pasticuan.wallet.domain.util.Formatters
+import id.pasticuan.wallet.ui.components.backdrop.backdrops.layerBackdrop
+import id.pasticuan.wallet.ui.components.backdrop.backdrops.rememberLayerBackdrop
 import id.pasticuan.wallet.ui.theme.PastiCuanTheme
 
 /**
@@ -77,14 +80,15 @@ fun SatuanIkonControl(
     )
     val selectedIdx = items.indexOfFirst { it.first == mode }.coerceAtLeast(0)
     val stepPx = with(density) { (44.dp + 2.dp).toPx() }
-    val pillOffsetPx by animateFloatAsState(
-        targetValue = selectedIdx * stepPx,
-        animationSpec = if (kaca.kurangiAnimasi) tween(0) else spring(
-            dampingRatio = 0.78f,
-            stiffness = 520f
-        ),
-        label = "satuanPillX"
-    )
+    val tombolPx = with(density) { 44.dp.toPx() }
+    val motion = rememberGlassPillMotion(initialIndex = selectedIdx, itemCount = items.size)
+    val isi = rememberLayerBackdrop()
+    LaunchedEffect(selectedIdx, kaca.pillPhysics, kaca.kurangiAnimasi) {
+        if (!motion.isDragging) {
+            motion.animateTo(selectedIdx, enablePhysics = kaca.pillPhysics, reduceMotion = kaca.kurangiAnimasi)
+        }
+    }
+    val bidik = motion.indeksBidikan()
     val trackBg = if (kaca.liquidGlass && !c.isDark) c.segTrackBg.copy(alpha = 0.85f) else c.segTrackBg
 
     Box(
@@ -92,91 +96,110 @@ fun SatuanIkonControl(
             .clip(RoundedCornerShape(24.dp))
             .background(trackBg)
             .padding(3.dp)
+            .geserKapsulSegmen(
+                motion = motion,
+                centers = { items.indices.map { it * stepPx + tombolPx / 2f } },
+                aktif = kaca.liquidGlass && kaca.pillPhysics,
+                reduceMotion = kaca.kurangiAnimasi,
+                onTick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) },
+                onPilih = { i -> if (i != selectedIdx) onModeChange(items[i].first) }
+            )
     ) {
-        Box(
-            modifier = Modifier
-                .graphicsLayer { translationX = pillOffsetPx }
-                .size(width = 44.dp, height = 44.dp)
-                .shadow(
-                    elevation = if (c.isDark) 2.dp else 1.5.dp,
-                    shape = RoundedCornerShape(24.dp),
-                    ambientColor = Color.Black.copy(alpha = 0.14f),
-                    spotColor = Color.Black.copy(alpha = 0.14f)
-                )
-                .clip(RoundedCornerShape(24.dp))
-                .background(c.segSelectedBg)
-                .then(
-                    if (kaca.liquidGlass) {
-                        Modifier.border(
-                            0.5.dp,
-                            if (c.isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f),
-                            RoundedCornerShape(24.dp)
-                        )
-                    } else Modifier
-                )
-        )
+        Box(modifier = if (kaca.liquidGlass) Modifier.layerBackdrop(isi) else Modifier) {
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { translationX = motion.position * stepPx }
+                    .size(width = 44.dp, height = 44.dp)
+                    .shadow(
+                        elevation = if (c.isDark) 2.dp else 1.5.dp,
+                        shape = RoundedCornerShape(24.dp),
+                        ambientColor = Color.Black.copy(alpha = 0.14f),
+                        spotColor = Color.Black.copy(alpha = 0.14f)
+                    )
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(c.segSelectedBg)
+                    .then(
+                        if (kaca.liquidGlass) {
+                            Modifier.border(
+                                0.5.dp,
+                                if (c.isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f),
+                                RoundedCornerShape(24.dp)
+                            )
+                        } else Modifier
+                    )
+            )
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            items.forEach { (itemMode, a11yLabel) ->
-                val selected = mode == itemMode
-                val fg by animateColorAsState(
-                    targetValue = if (selected) c.segSelectedFg else c.inkMuted,
-                    animationSpec = tween(150),
-                    label = "satuanFg"
-                )
-                Box(
-                    modifier = Modifier
-                        .size(width = 44.dp, height = 44.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .semantics { contentDescription = a11yLabel }
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.RadioButton
-                        ) {
-                            if (!selected) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onModeChange(itemMode)
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    when (itemMode) {
-                        ModeSatuan.USD -> Icon(
-                            imageVector = PastiCuanIcons.CurrencyDollar,
-                            contentDescription = null,
-                            tint = fg,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        ModeSatuan.SOL -> Icon(
-                            imageVector = PastiCuanIcons.CurrencySolana,
-                            contentDescription = null,
-                            tint = fg,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        ModeSatuan.BANDINGKAN -> Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                items.forEachIndexed { idx, (itemMode, a11yLabel) ->
+                    val selected = mode == itemMode
+                    val tampakAktif = bidik?.let { it == idx } ?: selected
+                    val fg by animateColorAsState(
+                        targetValue = if (tampakAktif) c.segSelectedFg else c.inkMuted,
+                        animationSpec = tween(150),
+                        label = "satuanFg"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(width = 44.dp, height = 44.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .semantics { contentDescription = a11yLabel }
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                role = Role.RadioButton
+                            ) {
+                                if (!selected) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onModeChange(itemMode)
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        when (itemMode) {
+                            ModeSatuan.USD -> Icon(
                                 imageVector = PastiCuanIcons.CurrencyDollar,
                                 contentDescription = null,
                                 tint = fg,
-                                modifier = Modifier.size(14.5.dp)
+                                modifier = Modifier.size(18.dp)
                             )
-                            Icon(
+                            ModeSatuan.SOL -> Icon(
                                 imageVector = PastiCuanIcons.CurrencySolana,
                                 contentDescription = null,
                                 tint = fg,
-                                modifier = Modifier.size(14.5.dp)
+                                modifier = Modifier.size(18.dp)
                             )
+                            ModeSatuan.BANDINGKAN -> Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = PastiCuanIcons.CurrencyDollar,
+                                    contentDescription = null,
+                                    tint = fg,
+                                    modifier = Modifier.size(14.5.dp)
+                                )
+                                Icon(
+                                    imageVector = PastiCuanIcons.CurrencySolana,
+                                    contentDescription = null,
+                                    tint = fg,
+                                    modifier = Modifier.size(14.5.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+
+        KacaSegmenTerangkat(
+            motion = motion,
+            isi = isi,
+            leftPx = motion.position * stepPx,
+            widthPx = tombolPx,
+            heightPx = tombolPx
+        )
     }
 }
 

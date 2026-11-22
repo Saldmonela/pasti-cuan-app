@@ -1,6 +1,7 @@
 package id.pasticuan.wallet.ui.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -17,11 +18,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -41,7 +45,7 @@ import id.pasticuan.wallet.ui.components.backdrop.shadow.Shadow
 import id.pasticuan.wallet.ui.theme.PastiCuanTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -159,18 +163,7 @@ class GlassPillMotion(
                     animationSpec = spring(dampingRatio = 0.68f, stiffness = 420f)
                 )
             }
-            settleJob = scope.launch {
-                delay(230)
-                if (!isDragging) {
-                    materialAnim.animateTo(
-                        targetValue = 0f,
-                        animationSpec = spring(
-                            dampingRatio = 0.82f,
-                            stiffness = 340f
-                        )
-                    )
-                }
-            }
+            leburSaatMendarat(safe.toFloat())
         } else {
             scope.launch {
                 materialAnim.animateTo(0f, animationSpec = tween(160))
@@ -232,15 +225,20 @@ class GlassPillMotion(
                 )
             )
         }
+        leburSaatMendarat(safe.toFloat())
+    }
+
+    /**
+     * Kaca tetap terangkat sampai kapsul hampir mendarat, lalu melebur ~380ms ke kapsul diam
+     * (paritas HANDOVER_START/HANDOVER_TAU di pillMotion.ts), bukan memudar di tengah perjalanan.
+     */
+    private fun leburSaatMendarat(target: Float) {
         settleJob = scope.launch {
-            delay(160)
+            snapshotFlow { positionAnim.value }.first { abs(it - target) < 0.04f }
             if (!isDragging) {
                 materialAnim.animateTo(
                     targetValue = 0f,
-                    animationSpec = spring(
-                        dampingRatio = 0.84f,
-                        stiffness = 310f
-                    )
+                    animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing)
                 )
             }
         }
@@ -350,11 +348,8 @@ fun LiftedGlassSelectionPill(
     val useFrostOnly = kaca.modeRingan || !isRuntimeShaderSupported()
 
     val specularColor = Color.White.copy(alpha = (if (c.isDark) 0.55f else 0.95f) * presence)
-    val lensTintColor = if (c.isDark) {
-        Color.White.copy(alpha = 0.06f * presence)
-    } else {
-        Color.White.copy(alpha = 0.14f * presence)
-    }
+    val tint = kacaHijauTint(c.isDark, presence, kuatTerang = 0.22f, kuatGelap = 0.13f)
+    val rim = kacaHijauRim(c.isDark, presence)
 
     Box(
         modifier = modifier
@@ -408,8 +403,29 @@ fun LiftedGlassSelectionPill(
                 },
                 backdropScale = 1f,
                 onDrawSurface = {
-                    drawRect(color = lensTintColor)
+                    drawRect(brush = tint)
+                    drawRoundRect(
+                        color = rim,
+                        cornerRadius = CornerRadius(size.height / 2f),
+                        style = Stroke(width = 1.dp.toPx())
+                    )
                 }
             )
     )
 }
+
+/**
+ * Tint hijau tipis kaca terangkat (paritas .lg-glass di globals.css): kabut di kiri atas yang memudar ke bawah.
+ * Mode gelap memakai forest-ink terang (#A2E378), mode terang lime-action (#9FE870).
+ */
+internal fun kacaHijauTint(isDark: Boolean, presence: Float, kuatTerang: Float, kuatGelap: Float): Brush {
+    val hijau = if (isDark) Color(0xFFA2E378) else Color(0xFF9FE870)
+    val kuat = if (isDark) kuatGelap else kuatTerang
+    return Brush.linearGradient(
+        listOf(hijau.copy(alpha = kuat * presence), hijau.copy(alpha = kuat * 0.25f * presence))
+    )
+}
+
+/** Garis tepi kaca terangkat: hijau pucat di mode gelap, putih di mode terang. */
+internal fun kacaHijauRim(isDark: Boolean, presence: Float): Color =
+    if (isDark) Color(0xFFCDF0B4).copy(alpha = 0.45f * presence) else Color.White.copy(alpha = 0.85f * presence)

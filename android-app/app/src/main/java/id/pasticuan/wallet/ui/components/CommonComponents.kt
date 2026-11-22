@@ -222,24 +222,21 @@ fun <T> SegmentedTrack(
     val haptic = LocalHapticFeedback.current
     val bounds = remember(options.size) { mutableStateMapOf<Int, Pair<Float, Float>>() }
     val selectedIdx = options.indexOf(selected).coerceAtLeast(0)
-    val selectedBounds = bounds[selectedIdx]
+    val motion = rememberGlassPillMotion(initialIndex = selectedIdx, itemCount = options.size)
+    val isi = rememberLayerBackdrop()
 
-    val pillXAnim = remember(options.size) { Animatable(0f) }
-    val pillWAnim = remember(options.size) { Animatable(0f) }
-    var snappedOnce by remember(options.size) { mutableStateOf(false) }
-
-    LaunchedEffect(selectedIdx, selectedBounds, kaca.kurangiAnimasi) {
-        val target = selectedBounds ?: return@LaunchedEffect
-        if (!snappedOnce || kaca.kurangiAnimasi) {
-            pillXAnim.snapTo(target.first)
-            pillWAnim.snapTo(target.second)
-            snappedOnce = true
-        } else {
-            val animSpec = spring<Float>(dampingRatio = 0.78f, stiffness = 520f)
-            launch { pillXAnim.animateTo(target.first, animationSpec = animSpec) }
-            launch { pillWAnim.animateTo(target.second, animationSpec = animSpec) }
+    LaunchedEffect(selectedIdx, kaca.pillPhysics, kaca.kurangiAnimasi) {
+        if (!motion.isDragging) {
+            motion.animateTo(selectedIdx, enablePhysics = kaca.pillPhysics, reduceMotion = kaca.kurangiAnimasi)
         }
     }
+
+    val siap = options.isNotEmpty() && bounds.size == options.size
+    val lefts = options.indices.map { bounds[it]?.first ?: 0f }
+    val widths = options.indices.map { bounds[it]?.second ?: 0f }
+    val kapsul = { kapsulDiPosisi(motion.position, lefts, widths) }
+    val pillHeightPx = with(LocalDensity.current) { 32.dp.toPx() }
+    val bidik = motion.indeksBidikan()
 
     val trackBg = if (kaca.liquidGlass && !c.isDark) {
         c.segTrackBg.copy(alpha = 0.85f)
@@ -253,89 +250,116 @@ fun <T> SegmentedTrack(
             .clip(RoundedCornerShape(24.dp))
             .background(trackBg)
             .padding(3.dp)
-    ) {
-        if (snappedOnce) {
-            Box(
-                modifier = Modifier
-                    .layout { measurable, constraints ->
-                        val wPx = pillWAnim.value.roundToInt().coerceIn(0, constraints.maxWidth)
-                        val hPx = 32.dp.roundToPx().coerceIn(0, constraints.maxHeight)
-                        val placeable = measurable.measure(Constraints.fixed(wPx, hPx))
-                        layout(wPx, hPx) {
-                            placeable.place(pillXAnim.value.roundToInt(), 0)
-                        }
-                    }
-                    .shadow(
-                        elevation = if (c.isDark) 2.dp else 1.5.dp,
-                        shape = RoundedCornerShape(24.dp),
-                        ambientColor = Color.Black.copy(alpha = 0.14f),
-                        spotColor = Color.Black.copy(alpha = 0.14f)
-                    )
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(c.segSelectedBg)
-                    .then(
-                        if (kaca.liquidGlass) {
-                            Modifier.border(
-                                0.5.dp,
-                                if (c.isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f),
-                                RoundedCornerShape(24.dp)
-                            )
-                        } else Modifier
-                    )
+            .geserKapsulSegmen(
+                motion = motion,
+                centers = { options.indices.map { lefts[it] + widths[it] / 2f } },
+                aktif = kaca.liquidGlass && kaca.pillPhysics && siap && options.size > 1,
+                reduceMotion = kaca.kurangiAnimasi,
+                onTick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) },
+                onPilih = { i -> if (i != selectedIdx) onSelect(options[i]) }
             )
-        }
-
-        Row(
-            modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
+                .then(if (kaca.liquidGlass) Modifier.layerBackdrop(isi) else Modifier)
         ) {
-            options.forEachIndexed { idx, option ->
-                val isSelected = option == selected
-                val fg by animateColorAsState(
-                    targetValue = if (isSelected) c.segSelectedFg else c.inkMuted,
-                    animationSpec = tween(150),
-                    label = "segFg"
-                )
+            if (siap) {
                 Box(
                     modifier = Modifier
-                        .then(if (fillWidth) Modifier.weight(1f) else Modifier)
-                        .height(32.dp)
-                        .onGloballyPositioned { coords ->
-                            val x = coords.positionInParent().x
-                            val w = coords.size.width.toFloat()
-                            val prev = bounds[idx]
-                            if (prev == null || prev.first != x || prev.second != w) {
-                                bounds[idx] = x to w
+                        .layout { measurable, constraints ->
+                            val (leftPx, wF) = kapsul()
+                            val wPx = wF.roundToInt().coerceIn(0, constraints.maxWidth)
+                            val hPx = 32.dp.roundToPx().coerceIn(0, constraints.maxHeight)
+                            val placeable = measurable.measure(Constraints.fixed(wPx, hPx))
+                            layout(wPx, hPx) {
+                                placeable.place(leftPx.roundToInt(), 0)
                             }
                         }
+                        .shadow(
+                            elevation = if (c.isDark) 2.dp else 1.5.dp,
+                            shape = RoundedCornerShape(24.dp),
+                            ambientColor = Color.Black.copy(alpha = 0.14f),
+                            spotColor = Color.Black.copy(alpha = 0.14f)
+                        )
                         .clip(RoundedCornerShape(24.dp))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.RadioButton
-                        ) {
-                            if (!isSelected) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onSelect(option)
-                            }
-                        }
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = labelMapper(option),
-                        style = PastiCuanTheme.typography.caption.copy(
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFeatureSettings = "tnum"
-                        ),
-                        color = fg,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        .background(c.segSelectedBg)
+                        .then(
+                            if (kaca.liquidGlass) {
+                                Modifier.border(
+                                    0.5.dp,
+                                    if (c.isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f),
+                                    RoundedCornerShape(24.dp)
+                                )
+                            } else Modifier
+                        )
+                )
+            }
+
+            Row(
+                modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                options.forEachIndexed { idx, option ->
+                    val isSelected = option == selected
+                    val tampakAktif = bidik?.let { it == idx } ?: isSelected
+                    val fg by animateColorAsState(
+                        targetValue = if (tampakAktif) c.segSelectedFg else c.inkMuted,
+                        animationSpec = tween(150),
+                        label = "segFg"
                     )
+                    Box(
+                        modifier = Modifier
+                            .then(if (fillWidth) Modifier.weight(1f) else Modifier)
+                            .height(32.dp)
+                            .onGloballyPositioned { coords ->
+                                val x = coords.positionInParent().x
+                                val w = coords.size.width.toFloat()
+                                val prev = bounds[idx]
+                                if (prev == null || prev.first != x || prev.second != w) {
+                                    bounds[idx] = x to w
+                                }
+                            }
+                            .clip(RoundedCornerShape(24.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                role = Role.RadioButton
+                            ) {
+                                if (!isSelected) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onSelect(option)
+                                }
+                            }
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = labelMapper(option),
+                            style = PastiCuanTheme.typography.caption.copy(
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFeatureSettings = "tnum"
+                            ),
+                            color = fg,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
+        }
+
+        if (siap) {
+            val (leftPx, wPx) = kapsul()
+            KacaSegmenTerangkat(
+                motion = motion,
+                isi = isi,
+                leftPx = leftPx,
+                widthPx = wPx,
+                heightPx = pillHeightPx
+            )
         }
     }
 }
@@ -387,91 +411,120 @@ fun <T> FilterTabsTrack(
         val itemWidth = ((maxWidth - totalGap) / count).coerceAtLeast(1.dp)
         val density = LocalDensity.current
         val stepPx = with(density) { (itemWidth + 2.dp).toPx() }
-        val targetOffsetPx = stepPx * selectedIdx
-        val pillOffsetPx by animateFloatAsState(
-            targetValue = targetOffsetPx,
-            animationSpec = if (kaca.kurangiAnimasi) tween(0) else spring(
-                dampingRatio = 0.78f,
-                stiffness = 500f
-            ),
-            label = "filterTabPill"
-        )
+        val itemWidthPx = with(density) { itemWidth.toPx() }
+        val tinggiPx = with(density) { 36.dp.toPx() }
+        val motion = rememberGlassPillMotion(initialIndex = selectedIdx, itemCount = options.size)
+        val isi = rememberLayerBackdrop()
+        LaunchedEffect(selectedIdx, kaca.pillPhysics, kaca.kurangiAnimasi) {
+            if (!motion.isDragging) {
+                motion.animateTo(selectedIdx, enablePhysics = kaca.pillPhysics, reduceMotion = kaca.kurangiAnimasi)
+            }
+        }
+        val bidik = motion.indeksBidikan()
 
         Box(
             modifier = Modifier
-                .graphicsLayer { translationX = pillOffsetPx }
-                .width(itemWidth)
-                .height(36.dp)
-                .shadow(
-                    elevation = if (c.isDark) 2.dp else 1.5.dp,
-                    shape = shape,
-                    ambientColor = Color.Black.copy(alpha = 0.14f),
-                    spotColor = Color.Black.copy(alpha = 0.14f)
+                .fillMaxWidth()
+                .geserKapsulSegmen(
+                    motion = motion,
+                    centers = { options.indices.map { it * stepPx + itemWidthPx / 2f } },
+                    aktif = kaca.liquidGlass && kaca.pillPhysics && options.size > 1,
+                    reduceMotion = kaca.kurangiAnimasi,
+                    onTick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) },
+                    onPilih = { i -> if (i != selectedIdx) onSelect(options[i]) }
                 )
-                .clip(shape)
-                .background(c.segSelectedBg)
-                .then(
-                    if (kaca.liquidGlass) {
-                        Modifier.border(
-                            0.5.dp,
-                            if (c.isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.8f),
-                            shape
-                        )
-                    } else Modifier
-                )
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically
         ) {
-            options.forEach { option ->
-                val isSelected = option == selected
-                val fg by animateColorAsState(
-                    targetValue = if (isSelected) c.segSelectedFg else c.inkMuted,
-                    animationSpec = tween(150),
-                    label = "tabFg"
-                )
-                val cnt = countMapper?.invoke(option)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (kaca.liquidGlass) Modifier.layerBackdrop(isi) else Modifier)
+            ) {
                 Box(
                     modifier = Modifier
-                        .weight(1f)
+                        .graphicsLayer { translationX = motion.position * stepPx }
+                        .width(itemWidth)
                         .height(36.dp)
+                        .shadow(
+                            elevation = if (c.isDark) 2.dp else 1.5.dp,
+                            shape = shape,
+                            ambientColor = Color.Black.copy(alpha = 0.14f),
+                            spotColor = Color.Black.copy(alpha = 0.14f)
+                        )
                         .clip(shape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            if (!isSelected) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onSelect(option)
-                            }
-                        }
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.Center
+                        .background(c.segSelectedBg)
+                        .then(
+                            if (kaca.liquidGlass) {
+                                Modifier.border(
+                                    0.5.dp,
+                                    if (c.isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.8f),
+                                    shape
+                                )
+                            } else Modifier
+                        )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val txt = buildAnnotatedString {
-                        append(labelMapper(option))
-                        if (cnt != null) {
-                            withStyle(SpanStyle(color = fg.copy(alpha = 0.82f))) {
-                                append(" $cnt")
+                    options.forEachIndexed { idx, option ->
+                        val isSelected = option == selected
+                        val tampakAktif = bidik?.let { it == idx } ?: isSelected
+                        val fg by animateColorAsState(
+                            targetValue = if (tampakAktif) c.segSelectedFg else c.inkMuted,
+                            animationSpec = tween(150),
+                            label = "tabFg"
+                        )
+                        val cnt = countMapper?.invoke(option)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clip(shape)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    if (!isSelected) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onSelect(option)
+                                    }
+                                }
+                                .padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val txt = buildAnnotatedString {
+                                append(labelMapper(option))
+                                if (cnt != null) {
+                                    withStyle(SpanStyle(color = fg.copy(alpha = 0.82f))) {
+                                        append(" $cnt")
+                                    }
+                                }
                             }
+                            Text(
+                                text = txt,
+                                style = PastiCuanTheme.typography.caption.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFeatureSettings = "tnum"
+                                ),
+                                color = fg,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
-                    Text(
-                        text = txt,
-                        style = PastiCuanTheme.typography.caption.copy(
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFeatureSettings = "tnum"
-                        ),
-                        color = fg,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
             }
+
+            KacaSegmenTerangkat(
+                motion = motion,
+                isi = isi,
+                leftPx = motion.position * stepPx,
+                widthPx = itemWidthPx,
+                heightPx = tinggiPx
+            )
         }
     }
 }

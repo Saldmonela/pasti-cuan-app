@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.pasticuan.wallet.domain.engine.PoolEngine
 import id.pasticuan.wallet.domain.model.Jenis
+import id.pasticuan.wallet.domain.model.ModeSatuan
 import id.pasticuan.wallet.domain.model.Peran
 import id.pasticuan.wallet.domain.model.Rentang
 import id.pasticuan.wallet.domain.model.Satuan
@@ -239,56 +240,65 @@ fun BerandaScreen(
                     )
                     Spacer(Modifier.height(12.dp))
 
-                    KvRow(
-                        label = "Modal dasar",
-                        value = Formatters.usd(pos.modalUsd)
+                    // Mengikuti kontrol Satuan (paritas page.tsx): SOL menampilkan semua baris dalam SOL,
+                    // Bandingkan menambahkan angka SOL kecil di bawah tiap angka USD.
+                    val pakaiSol = state.modeSatuan == ModeSatuan.SOL
+                    val bandingkan = state.modeSatuan == ModeSatuan.BANDINGKAN
+                    val feeSol = if (hasil.pool.harga > 0.0) pos.feeUsd / hasil.pool.harga else 0.0
+                    val roi = if (pakaiSol) {
+                        if (pos.modalSol > 1e-12) pos.profitSol / pos.modalSol * 100.0 else 0.0
+                    } else pos.roi
+                    fun minus(x: Double, d: Int, teks: String) =
+                        (if (Math.round(x * Math.pow(10.0, d.toDouble())) > 0) Formatters.MINUS else "") + teks
+
+                    NilaiSatuanRow(
+                        label = { Text("Modal dasar", style = PastiCuanTheme.typography.body, color = c.ink) },
+                        teksUsd = Formatters.usd(pos.modalUsd),
+                        teksSol = Formatters.sol(pos.modalSol),
+                        pakaiSol = pakaiSol,
+                        tampilKedua = bandingkan
                     )
                     Spacer(Modifier.height(10.dp))
 
-                    val profitNeg = Formatters.isNegative(pos.profitUsd, 2)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Untung/rugi",
-                                style = PastiCuanTheme.typography.body,
-                                color = c.ink
-                            )
-                            TagRoiPill(
-                                text = "ROI ${Formatters.persenBertanda(pos.roi)}",
-                                isNegative = Formatters.isNegative(pos.roi, 2)
-                            )
-                        }
-                        Text(
-                            text = Formatters.bertanda(pos.profitUsd, Satuan.USD),
-                            style = PastiCuanTheme.typography.bodyTabular,
-                            color = if (profitNeg) c.loss else c.gain
-                        )
-                    }
+                    val profitNeg = if (pakaiSol) Formatters.isNegative(pos.profitSol, 4) else Formatters.isNegative(pos.profitUsd, 2)
+                    NilaiSatuanRow(
+                        label = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Untung/rugi",
+                                    style = PastiCuanTheme.typography.body,
+                                    color = c.ink
+                                )
+                                TagRoiPill(
+                                    text = "ROI ${Formatters.persenBertanda(roi)}",
+                                    isNegative = Formatters.isNegative(roi, 2)
+                                )
+                            }
+                        },
+                        teksUsd = Formatters.bertanda(pos.profitUsd, Satuan.USD),
+                        teksSol = Formatters.bertanda(pos.profitSol, Satuan.SOL),
+                        pakaiSol = pakaiSol,
+                        tampilKedua = bandingkan,
+                        warna = if (profitNeg) c.loss else c.gain
+                    )
                     Spacer(Modifier.height(10.dp))
 
                     val feePctLabel = Formatters.persen(data.pengaturan.feePersen * 100.0).replace(",00", "")
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Fee terutang", style = PastiCuanTheme.typography.body, color = c.ink)
-                            Text(feePctLabel, style = PastiCuanTheme.typography.body, color = c.inkMuted)
-                        }
-                        Text(
-                            text = (if (pos.feeUsd > 0.004) Formatters.MINUS else "") + Formatters.usd(pos.feeUsd),
-                            style = PastiCuanTheme.typography.bodyTabular,
-                            color = c.ink
-                        )
-                    }
+                    NilaiSatuanRow(
+                        label = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Fee terutang", style = PastiCuanTheme.typography.body, color = c.ink)
+                                Text(feePctLabel, style = PastiCuanTheme.typography.body, color = c.inkMuted)
+                            }
+                        },
+                        teksUsd = minus(pos.feeUsd, 2, Formatters.usd(pos.feeUsd)),
+                        teksSol = minus(feeSol, 4, Formatters.sol(feeSol)),
+                        pakaiSol = pakaiSol,
+                        tampilKedua = bandingkan
+                    )
 
                     Spacer(Modifier.height(12.dp))
                     HorizontalDivider(thickness = 2.dp, color = c.ink)
@@ -306,12 +316,12 @@ fun BerandaScreen(
                         )
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
-                                text = Formatters.usd(pos.netUsd),
+                                text = if (pakaiSol) Formatters.sol(pos.netSol) else Formatters.usd(pos.netUsd),
                                 style = PastiCuanTheme.typography.figureTotal,
                                 color = c.ink
                             )
                             Text(
-                                text = Formatters.sol(pos.netSol),
+                                text = if (pakaiSol) Formatters.usd(pos.netUsd) else Formatters.sol(pos.netSol),
                                 style = PastiCuanTheme.typography.caption.copy(fontFeatureSettings = "tnum"),
                                 color = c.inkMuted
                             )
@@ -480,6 +490,43 @@ private fun KartuTugasPengelola(
             label = "Fee terutang dari investor",
             value = Formatters.usd(hasil.pengelola.feeTerutangTotal)
         )
+    }
+}
+
+/** Baris rincian nilai: angka utama mengikuti satuan aktif, angka satuan lain kecil di bawahnya bila [tampilKedua]. */
+@Composable
+private fun NilaiSatuanRow(
+    label: @Composable () -> Unit,
+    teksUsd: String,
+    teksSol: String,
+    pakaiSol: Boolean,
+    tampilKedua: Boolean,
+    warna: Color? = null
+) {
+    val c = PastiCuanTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = if (tampilKedua) Alignment.Top else Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.weight(1f)) { label() }
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = if (pakaiSol) teksSol else teksUsd,
+                style = PastiCuanTheme.typography.bodyTabular,
+                color = warna ?: c.ink,
+                textAlign = TextAlign.End
+            )
+            if (tampilKedua) {
+                Text(
+                    text = if (pakaiSol) teksUsd else teksSol,
+                    style = PastiCuanTheme.typography.caption.copy(fontFeatureSettings = "tnum"),
+                    color = c.inkMuted,
+                    textAlign = TextAlign.End
+                )
+            }
+        }
     }
 }
 
