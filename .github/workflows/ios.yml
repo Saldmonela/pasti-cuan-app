@@ -1,0 +1,55 @@
+name: iOS build
+
+# Build app iOS tanpa Mac: tes mesin hitung (swift test) lalu .ipa tanpa tanda tangan.
+# .ipa ditandatangani di perangkat pengguna lewat Sideloadly/AltStore memakai Apple ID biasa.
+on:
+  push:
+    branches: [feat/ios-app]
+    paths: ["ios-app/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pilih Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s /Applications/Xcode.app
+      - run: xcodebuild -version
+
+      - name: Tes mesin hitung (paritas Android)
+        working-directory: ios-app/PastiCuanCore
+        run: swift test
+
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build .app (iphoneos, tanpa tanda tangan)
+        run: |
+          xcodebuild -project PastiCuan.xcodeproj -scheme PastiCuan -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+
+      - name: Paketkan .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/PastiCuan.app Payload/
+          zip -qry PastiCuan-unsigned.ipa Payload
+          ls -lh PastiCuan-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PastiCuan-unsigned-ipa
+          path: ios-app/PastiCuan-unsigned.ipa
+          retention-days: 14
