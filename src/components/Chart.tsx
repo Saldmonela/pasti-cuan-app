@@ -25,8 +25,12 @@ const niceStep = (span: number) => STEPS.find((s) => span / s <= 14) ?? Math.cei
 const fmtPct = (v: number) => {
   if (Math.abs(v) < 1e-9) return "0%";
   const tanda = v > 0 ? "+" : "−";
-  const a = Math.abs(v);
-  const angka = Number.isInteger(a) ? String(a) : a.toFixed(1).replace(".", ",");
+  const a = Math.round(Math.abs(v) * 100) / 100;
+  const angka = Number.isInteger(a)
+    ? String(a)
+    : Number.isInteger(a * 10)
+      ? a.toFixed(1).replace(".", ",")
+      : a.toFixed(2).replace(".", ",");
   return `${tanda}${angka}%`;
 };
 
@@ -63,11 +67,13 @@ export default function Chart({
     let lo = rawLo;
     let hi = rawHi;
     let ticks: number[] = [];
+    let hiTick = 0;
+    let loTick = 0;
 
     if (persen) {
       const step = niceStep(rawHi - rawLo || 1);
-      const hiTick = rawHi > 0 ? Math.ceil(rawHi / step) * step : 0;
-      const loTick = rawLo < 0 ? Math.floor(rawLo / step) * step : 0;
+      hiTick = rawHi > 0 ? Math.ceil(rawHi / step) * step : 0;
+      loTick = rawLo < 0 ? Math.floor(rawLo / step) * step : 0;
       hi = Math.max(rawHi, hiTick);
       lo = Math.min(rawLo, loTick);
       ticks = [0];
@@ -79,10 +85,15 @@ export default function Chart({
     const x0 = titik[0]?.x ?? 0;
     const span = (titik[L]?.x ?? 0) - x0;
     const plotW = W - PL - pr;
+    const plotH = H - PT - PB;
     const X = (k: number) => (L && span ? PL + ((titik[k].x - x0) * plotW) / span : PL + plotW / 2);
-    const Y = (x: number) => PT + (H - PT - PB) * (1 - (x - lo + m) / (hi - lo + 2 * m || 1));
+    const Y = (x: number) => PT + plotH * (1 - (x - lo + m) / (hi - lo + 2 * m || 1));
     const jalur = (a: number[]) => a.map((x, k) => `${k ? "L" : "M"}${X(k).toFixed(1)} ${Y(x).toFixed(1)}`).join("");
     const y0 = Y(0);
+    if (persen) {
+      if (hiTick > 0 && Math.abs(Y(hiTick) - y0) >= plotH * 0.55) ticks.push(hiTick / 2);
+      if (loTick < 0 && Math.abs(Y(loTick) - y0) >= plotH * 0.55) ticks.push(loTick / 2);
+    }
     // Hindari label bertumpuk jika terlalu dekat garis 0%
     const sumbu = ticks.filter((val) => val === 0 || Math.abs(Y(val) - y0) >= 16);
     let hiIdx = 0;

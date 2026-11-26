@@ -62,9 +62,14 @@ private fun niceStep(span: Double): Double =
 private fun fmtPctAxis(v: Double): String {
     if (abs(v) < 1e-9) return "0%"
     val sign = if (v > 0) "+" else Formatters.MINUS
-    val a = abs(v)
+    val a = Formatters.rounded(abs(v), 2)
     val isInt = abs(a - a.toLong().toDouble()) < 1e-9
-    val num = if (isInt) a.toLong().toString() else String.format("%.1f", a).replace(".", ",")
+    val isOneDec = abs(a * 10.0 - kotlin.math.round(a * 10.0)) < 1e-9
+    val num = when {
+        isInt -> a.toLong().toString()
+        isOneDec -> String.format(java.util.Locale.US, "%.1f", a).replace(".", ",")
+        else -> String.format(java.util.Locale.US, "%.2f", a).replace(".", ",")
+    }
     return "$sign$num%"
 }
 
@@ -232,11 +237,13 @@ fun ChartCanvas(
         var lo = rawLo
         var hi = rawHi
         val ticks = mutableListOf<Double>()
+        var hiTick = 0.0
+        var loTick = 0.0
 
         if (isPersenMode) {
             val step = niceStep((rawHi - rawLo).let { if (it == 0.0) 1.0 else it })
-            val hiTick = if (rawHi > 0) ceil(rawHi / step) * step else 0.0
-            val loTick = if (rawLo < 0) floor(rawLo / step) * step else 0.0
+            hiTick = if (rawHi > 0) ceil(rawHi / step) * step else 0.0
+            loTick = if (rawLo < 0) floor(rawLo / step) * step else 0.0
             hi = max(rawHi, hiTick)
             lo = min(rawLo, loTick)
             ticks.add(0.0)
@@ -266,6 +273,12 @@ fun ChartCanvas(
         // Sumbu 0% & persen kanan (mode Bandingkan)
         if (isPersenMode) {
             val y0 = mapY(0.0)
+            if (hiTick > 0.0 && abs(mapY(hiTick) - y0) >= plotH * 0.55f) {
+                ticks.add(hiTick / 2.0)
+            }
+            if (loTick < 0.0 && abs(mapY(loTick) - y0) >= plotH * 0.55f) {
+                ticks.add(loTick / 2.0)
+            }
             drawLine(
                 color = c.hairline,
                 start = Offset(padLeft, y0),

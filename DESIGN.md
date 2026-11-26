@@ -378,7 +378,7 @@ Tegas tapi ramah. Tingginya 48px, sudutnya 24px, labelnya Title 600 15px dengan 
 
 ### Mode Bandingkan (BR-22)
 - Angka besar menjadi dua angka berdampingan (Figure 26px 800), masing-masing dengan persen di bawahnya.
-- Grafik menggambar dua garis persen dengan satu sumbu Y dan garis 0% tipis: USD garis penuh `forest-ink`, SOL putus-putus `ink-muted`. Legenda kecil di bawah grafik. Tanpa arsiran.
+- Grafik menggambar dua garis persen dengan satu sumbu Y dan garis 0% tipis: USD garis penuh `forest-ink`, SOL putus-putus `ink-muted`. Sumbu persen di kanan menampilkan `0%`, batas atas/bawah, serta otomatis menyisipkan 1 angka tengah (`hi/2` atau `lo/2`) bila salah satu sisi membentang minimal 55% tinggi area plot agar rentang lebar tetap mudah dibaca tanpa grid tambahan. Legenda kecil di bawah grafik. Tanpa arsiran.
 
 ### Saldo Pool dan Rekonsiliasi (BR-19)
 - Angka besar Pool = isi wallet, sama dengan yang terlihat di Jupiter. Selisih dengan total anggota dijelaskan di balik ikon info 44px di samping angka besar, bukan paragraf yang selalu tampil.

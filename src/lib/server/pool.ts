@@ -11,16 +11,9 @@ import type {
   Snapshot,
 } from "@/lib/types";
 import { mapAnggota } from "./auth";
+import { dedupTitikRows, saringLonjakanIndekser, type TitikRow } from "./titik-nilai";
 
-type TitikRow = {
-  id: number;
-  dibaca_pada: string;
-  resolusi: string;
-  sumber: string;
-  nilai_usd: number | string;
-  saldo_sol: number | string;
-  harga_sol_usd: number | string;
-};
+export { dedupTitikRows, saringLonjakanIndekser, type TitikRow };
 
 /** PostgREST membatasi 1.000 baris per query; halaman pertama sekaligus menghitung total, sisanya diambil paralel. */
 async function fetchAllTitikNilai(admin: ReturnType<typeof createSupabaseAdmin>): Promise<TitikRow[]> {
@@ -43,9 +36,7 @@ async function fetchAllTitikNilai(admin: ReturnType<typeof createSupabaseAdmin>)
     if (res.error) throw new Error(`Gagal memuat titik nilai: ${res.error.message}`);
     for (const r of res.data ?? []) unik.set(r.id, r);
   }
-  const rows = [...unik.values()];
-  rows.sort((a, b) => Date.parse(a.dibaca_pada) - Date.parse(b.dibaca_pada));
-  return rows;
+  return dedupTitikRows([...unik.values()]);
 }
 
 export async function loadPoolContext(options: { includeArusDetails?: boolean } = {}) {
@@ -147,8 +138,19 @@ export async function loadPoolContext(options: { includeArusDetails?: boolean } 
     ditandaiPada: a.ditandai_pada ?? undefined,
   }));
 
-  // Pilih resolusi terbaik bila ada duplikat waktu, atau pertahankan urutan kronologis
-  const titik: TitikNilai[] = (titikRows ?? []).map((t) => ({
+  const refIds = new Set<number>();
+  for (const p of permintaan) {
+    if (p.titikNilaiId != null) refIds.add(p.titikNilaiId);
+  }
+  for (const s of snapRows ?? []) {
+    if (s.titik_nilai_id != null) refIds.add(Number(s.titik_nilai_id));
+  }
+  const arusMs = arusAll
+    .filter((a) => a.nilaiUsd >= pengaturan.ambangDustUsd)
+    .map((a) => Date.parse(a.waktu));
+  const titikBersih = saringLonjakanIndekser(titikRows, refIds, arusMs);
+
+  const titik: TitikNilai[] = titikBersih.map((t) => ({
     id: Number(t.id),
     ms: Date.parse(t.dibaca_pada),
     nilaiUsd: Number(t.nilai_usd),
