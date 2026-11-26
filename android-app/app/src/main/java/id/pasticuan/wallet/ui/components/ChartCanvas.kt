@@ -25,16 +25,20 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.res.ResourcesCompat
+import id.pasticuan.wallet.R
 import id.pasticuan.wallet.domain.util.Formatters
 import id.pasticuan.wallet.ui.theme.PastiCuanTheme
 import kotlin.math.abs
@@ -72,14 +76,21 @@ fun ChartCanvas(
     isPersenMode: Boolean,
     chartKey: String,
     accessibilityLabel: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    formatNilai: ((Double) -> String)? = null
 ) {
     val c = PastiCuanTheme.colors
     val kaca = PastiCuanTheme.kaca
+    val context = LocalContext.current
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     val currentOnScrub by rememberUpdatedState(onScrubIndex)
     val currentTitik by rememberUpdatedState(titik)
+
+    val interSemiBold = remember(context) {
+        runCatching { ResourcesCompat.getFont(context, R.font.inter_semibold) }.getOrNull()
+            ?: Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
 
     val drawProgress = remember { Animatable(1f) }
     LaunchedEffect(chartKey) {
@@ -105,6 +116,29 @@ fun ChartCanvas(
             textSize = with(density) { 10.5.sp.toPx() }
             textAlign = Paint.Align.RIGHT
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+    }
+
+    val hiLoHaloPaint = remember(c.card, density, interSemiBold) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = c.card.toArgb()
+            textSize = with(density) { 10.5.sp.toPx() }
+            typeface = interSemiBold
+            fontFeatureSettings = "tnum"
+            style = Paint.Style.STROKE
+            strokeWidth = with(density) { 3.dp.toPx() }
+            strokeJoin = Paint.Join.ROUND
+            strokeCap = Paint.Cap.ROUND
+        }
+    }
+
+    val hiLoTextPaint = remember(c.ink, c.inkMuted, density, interSemiBold) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = lerp(c.inkMuted, c.ink, 0.86f).toArgb()
+            textSize = with(density) { 10.5.sp.toPx() }
+            typeface = interSemiBold
+            fontFeatureSettings = "tnum"
+            style = Paint.Style.FILL
         }
     }
 
@@ -332,7 +366,56 @@ fun ChartCanvas(
                     radius = 3.5.dp.toPx(),
                     center = Offset(mapX(l), mapY(v1[l]))
                 )
-            } else if (aktifIndex in 0..l) {
+            }
+
+            // Penanda nilai tertinggi & terendah pada rentang aktif (gaya garis penunjuk Bitget)
+            if (titik.size >= 2 && formatNilai != null) {
+                var hiIdx = 0
+                var loIdx = 0
+                for (k in 1..l) {
+                    if (v1[k] > v1[hiIdx]) hiIdx = k
+                    if (v1[k] < v1[loIdx]) loIdx = k
+                }
+                if (hiIdx != loIdx) {
+                    val teksHi = formatNilai(v1[hiIdx])
+                    val teksLo = formatNilai(v1[loIdx])
+                    val yHi = mapY(v1[hiIdx])
+                    val yLo = mapY(v1[loIdx])
+                    if (teksHi != teksLo && abs(yLo - yHi) >= 12.dp.toPx()) {
+                        for ((idx, teks) in listOf(hiIdx to teksHi, loIdx to teksLo)) {
+                            val vx = mapX(idx)
+                            val vy = mapY(v1[idx])
+                            val goRight = vx <= padLeft + plotW / 2f
+                            val dir = if (goRight) 1f else -1f
+                            val hasDot = titik[idx].ditandai || (idx == l && aktifIndex == null)
+                            val startPad = when {
+                                titik[idx].ditandai -> 5.5.dp.toPx()
+                                idx == l && aktifIndex == null -> 5.dp.toPx()
+                                else -> 1.dp.toPx()
+                            }
+                            val x1 = vx + dir * startPad
+                            val x2 = vx + dir * (if (hasDot) startPad + 12.dp.toPx() else 14.dp.toPx())
+                            val tx = x2 + dir * 3.dp.toPx()
+
+                            drawLine(
+                                color = c.inkMuted.copy(alpha = 0.75f),
+                                start = Offset(x1, vy),
+                                end = Offset(x2, vy),
+                                strokeWidth = 1.dp.toPx()
+                            )
+
+                            val align = if (goRight) Paint.Align.LEFT else Paint.Align.RIGHT
+                            hiLoHaloPaint.textAlign = align
+                            hiLoTextPaint.textAlign = align
+                            val baselineY = vy - (hiLoTextPaint.ascent() + hiLoTextPaint.descent()) / 2f
+                            drawContext.canvas.nativeCanvas.drawText(teks, tx, baselineY, hiLoHaloPaint)
+                            drawContext.canvas.nativeCanvas.drawText(teks, tx, baselineY, hiLoTextPaint)
+                        }
+                    }
+                }
+            }
+
+            if (aktifIndex != null && aktifIndex in 0..l) {
                 val sx = mapX(aktifIndex)
                 drawLine(
                     color = c.inkMuted,

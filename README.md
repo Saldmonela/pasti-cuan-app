@@ -20,6 +20,8 @@ npm run dev
 
 Buka `http://localhost:3000`. Jika `NEXT_PUBLIC_SUPABASE_URL` belum diisi (atau `NEXT_PUBLIC_PROTOTYPE_MODE=1`), aplikasi otomatis berjalan dalam mode prototype memakai data contoh `localStorage`.
 
+Untuk mencoba tampilan pengelola tanpa menyentuh data asli, jalankan server dengan `NEXT_PUBLIC_PROTOTYPE_MODE=1` (PowerShell: `$env:NEXT_PUBLIC_PROTOTYPE_MODE = "1"; npm run dev`). Di web, buka **Prototype → Galih · pengelola → Kelola → Arus onchain**. Panel **Prototype** juga tersedia di build preview statis, tetapi tidak muncul di web produksi.
+
 ```bash
 npm test       # vitest run (golden test & unit test engine)
 npm run lint   # eslint

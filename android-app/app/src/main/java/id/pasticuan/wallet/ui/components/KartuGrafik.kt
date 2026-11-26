@@ -453,7 +453,8 @@ fun KartuGrafik(
                 onScrubIndex = { aktifIdx = it },
                 isPersenMode = bandingkan,
                 chartKey = "${seri.jenis}-${rentang.name}-${mode.name}",
-                accessibilityLabel = "Grafik $label rentang ${rentang.label}"
+                accessibilityLabel = "Grafik $label rentang ${rentang.label}",
+                formatNilai = { v -> if (bandingkan) Formatters.persenBertanda(v) else Formatters.uang(v, satuanAktif) }
             )
         }
 

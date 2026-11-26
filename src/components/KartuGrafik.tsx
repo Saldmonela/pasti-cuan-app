@@ -218,6 +218,7 @@ export default function KartuGrafik({
           aktif={i}
           onAktif={pilih}
           persen={bandingkan}
+          formatNilai={bandingkan ? persenBertanda : (v) => uang(v, u)}
           label={`Grafik ${label.toLowerCase()} ${bandingkan ? "dalam persen, USD dan SOL" : `dalam ${u}`}, rentang ${rentang}`}
         />
       )}

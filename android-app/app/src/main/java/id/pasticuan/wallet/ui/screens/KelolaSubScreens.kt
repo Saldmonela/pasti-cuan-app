@@ -209,7 +209,8 @@ fun KelolaArusScreen(
                     selected = filter,
                     labelMapper = { it.label },
                     countMapper = { f -> data.arus.count { cocokFilter(it, f) } },
-                    onSelect = { filter = it }
+                    onSelect = { filter = it },
+                    wrapLabel = true
                 )
             }
 
@@ -237,16 +238,23 @@ fun KelolaArusScreen(
                                 IconDot(if (a.arah == ArahArus.MASUK) PastiCuanIcons.ArrowDownLeft else PastiCuanIcons.ArrowUpRight)
                                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(
                                             text = "${if (a.arah == ArahArus.MASUK) "Masuk" else "Keluar"} ${jumlahTokenLabel(a)}",
                                             style = PastiCuanTheme.typography.title,
+                                            color = c.ink,
+                                            modifier = Modifier.padding(end = 8.dp)
+                                        )
+                                        Text(
+                                            text = (if (a.arah == ArahArus.MASUK) "+" else Formatters.MINUS) + Formatters.usd(a.nilaiUsd),
+                                            style = PastiCuanTheme.typography.bodyTabular,
                                             color = c.ink
                                         )
-                                        StatusArusChip(a.status)
                                     }
+                                    StatusArusChip(a.status)
                                     Text(text = Formatters.waktu(a.waktu), style = PastiCuanTheme.typography.caption, color = c.inkMuted)
                                     Text(
                                         text = "${if (a.arah == ArahArus.MASUK) "Dari" else "Ke"} ${Formatters.ringkasAlamat(a.alamatLawan)}",
@@ -281,26 +289,29 @@ fun KelolaArusScreen(
                                     }
 
                                     Spacer(Modifier.height(4.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
                                         if (a.status == StatusArus.BELUM) {
                                             PastiCuanButton(
                                                 text = "Cocokkan",
-                                                height = 38.dp,
+                                                wrapText = true,
                                                 enabled = !state.offline,
                                                 onClick = { mulaiTandai(a, "cocok") }
                                             )
                                             PastiCuanButton(
-                                                text = "Tandai lain",
+                                                text = if (a.arah == ArahArus.MASUK) "Tandai hadiah / lainnya" else "Tandai biaya atau bukan arus",
                                                 isGhost = true,
-                                                height = 38.dp,
+                                                wrapText = true,
                                                 enabled = !state.offline,
-                                                onClick = { mulaiTandai(a, "biaya") }
+                                                onClick = { mulaiTandai(a, if (a.arah == ArahArus.MASUK) "hadiah" else "biaya") }
                                             )
                                         } else {
                                             PastiCuanButton(
                                                 text = "Batalkan penandaan",
                                                 isGhost = true,
-                                                height = 38.dp,
+                                                wrapText = true,
                                                 enabled = !state.offline && !state.sedangMengirim,
                                                 onClick = {
                                                     scope.launch {
@@ -312,11 +323,6 @@ fun KelolaArusScreen(
                                         }
                                     }
                                 }
-                                Text(
-                                    text = (if (a.arah == ArahArus.MASUK) "+" else Formatters.MINUS) + Formatters.usd(a.nilaiUsd),
-                                    style = PastiCuanTheme.typography.bodyTabular,
-                                    color = c.ink
-                                )
                             }
                         }
                     }
@@ -367,12 +373,21 @@ fun KelolaArusScreen(
                 )
 
                 Text("Tandai sebagai", style = PastiCuanTheme.typography.label.copy(fontWeight = FontWeight.SemiBold), color = c.ink)
-                val radioModes = listOf(
-                    "cocok" to "Cocokkan dengan ${if (target.arah == ArahArus.MASUK) "setoran" else "penarikan"} yang diajukan",
-                    "buat" to "Buat permintaan untuk anggota",
-                    "biaya" to "Biaya pool (dianggap rugi pool)",
-                    "bukan_arus" to "Bukan arus (dust, token spam)"
-                )
+                val radioModes = buildList {
+                    add("cocok" to "Cocokkan dengan ${if (target.arah == ArahArus.MASUK) "setoran" else "penarikan"} yang diajukan")
+                    add("buat" to "Buat permintaan untuk anggota")
+                    if (target.arah == ArahArus.MASUK) {
+                        add("hadiah" to "Hadiah / reward (masuk nilai pool)")
+                    }
+                    add(
+                        "biaya" to if (target.arah == ArahArus.MASUK) {
+                            "Operasional / pengembalian biaya pool (masuk nilai pool)"
+                        } else {
+                            "Biaya pool / operasional (mengurangi nilai pool)"
+                        }
+                    )
+                    add("bukan_arus" to "Bukan arus (dust, token spam)")
+                }
                 radioModes.forEach { (m, lbl) ->
                     Row(
                         modifier = Modifier
@@ -429,7 +444,11 @@ fun KelolaArusScreen(
                     Text("Permintaan", style = PastiCuanTheme.typography.label.copy(fontWeight = FontWeight.SemiBold), color = c.ink)
                     if (calonPermintaan.isEmpty()) {
                         Text(
-                            text = "Belum ada ${if (target.arah == ArahArus.MASUK) "setoran" else "penarikan"} yang menunggu. Pilih \"Buat permintaan untuk anggota\".",
+                            text = if (target.arah == ArahArus.MASUK) {
+                                "Belum ada setoran yang menunggu. Pilih \"Buat permintaan untuk anggota\" jika ini setoran, atau \"Hadiah / reward\" jika ini hadiah/insentif protokol."
+                            } else {
+                                "Belum ada penarikan yang menunggu. Pilih \"Buat permintaan untuk anggota\"."
+                            },
                             style = PastiCuanTheme.typography.caption,
                             color = c.inkMuted
                         )
@@ -500,13 +519,21 @@ fun KelolaArusScreen(
                     )
                 }
 
-                if (modeSheet == "biaya" || modeSheet == "bukan_arus") {
+                if (modeSheet == "hadiah" || modeSheet == "biaya" || modeSheet == "bukan_arus") {
                     HorizontalDivider(color = c.hairline)
                     SheetTextInput(
                         label = "Catatan",
                         value = catatan,
                         onValueChange = { if (it.length <= 200) catatan = it; errSheet = null },
-                        placeholder = if (modeSheet == "biaya") "Wajib. Contoh: biaya transaksi atau sewa akun." else "Wajib. Contoh: token spam yang lolos ambang."
+                        placeholder = when (modeSheet) {
+                            "hadiah" -> "Wajib. Contoh: reward Meteora, airdrop, atau insentif protokol."
+                            "biaya" -> if (target.arah == ArahArus.MASUK) {
+                                "Wajib. Contoh: pengembalian SOL operasional/gas."
+                            } else {
+                                "Wajib. Contoh: biaya transaksi, gas, atau sewa akun."
+                            }
+                            else -> "Wajib. Contoh: token spam yang lolos ambang."
+                        }
                     )
                 }
 

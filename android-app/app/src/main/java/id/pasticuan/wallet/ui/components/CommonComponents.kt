@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -76,6 +78,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -83,6 +86,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
@@ -136,7 +140,8 @@ fun PastiCuanButton(
     isDanger: Boolean = false,
     isGhost: Boolean = false,
     enabled: Boolean = true,
-    height: Dp = 48.dp
+    height: Dp = 48.dp,
+    wrapText: Boolean = false
 ) {
     val c = PastiCuanTheme.colors
     val kaca = PastiCuanTheme.kaca
@@ -164,7 +169,7 @@ fun PastiCuanButton(
     Box(
         modifier = modifier
             .scale(scale)
-            .height(height)
+            .then(if (wrapText) Modifier.heightIn(min = height) else Modifier.height(height))
             .clip(RoundedCornerShape(24.dp))
             .background(if (enabled || isGhost) bg else bg.copy(alpha = 0.45f))
             .clickable(
@@ -174,7 +179,7 @@ fun PastiCuanButton(
                 role = Role.Button,
                 onClick = onClick
             )
-            .padding(horizontal = if (isGhost) 12.dp else 18.dp),
+            .padding(horizontal = if (isGhost) 12.dp else 18.dp, vertical = if (wrapText) 8.dp else 0.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -196,8 +201,9 @@ fun PastiCuanButton(
                     fontSize = if (height < 44.dp) 14.sp else 15.sp
                 ),
                 color = if (enabled) fg else fg.copy(alpha = 0.45f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                textAlign = TextAlign.Center,
+                maxLines = if (wrapText) Int.MAX_VALUE else 1,
+                overflow = if (wrapText) TextOverflow.Clip else TextOverflow.Ellipsis
             )
         }
     }
@@ -375,7 +381,8 @@ fun <T> FilterTabsTrack(
     labelMapper: (T) -> String,
     countMapper: ((T) -> Int?)? = null,
     onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    wrapLabel: Boolean = false
 ) {
     val c = PastiCuanTheme.colors
     val kaca = PastiCuanTheme.kaca
@@ -412,7 +419,10 @@ fun <T> FilterTabsTrack(
         val density = LocalDensity.current
         val stepPx = with(density) { (itemWidth + 2.dp).toPx() }
         val itemWidthPx = with(density) { itemWidth.toPx() }
-        val tinggiPx = with(density) { 36.dp.toPx() }
+        val minHeight = if (wrapLabel) 44.dp else 36.dp
+        var measuredHeightPx by remember { mutableStateOf(0) }
+        val tinggiPx = if (wrapLabel && measuredHeightPx > 0) measuredHeightPx.toFloat()
+            else with(density) { minHeight.toPx() }
         val motion = rememberGlassPillMotion(initialIndex = selectedIdx, itemCount = options.size)
         val isi = rememberLayerBackdrop()
         LaunchedEffect(selectedIdx, kaca.pillPhysics, kaca.kurangiAnimasi) {
@@ -443,7 +453,7 @@ fun <T> FilterTabsTrack(
                     modifier = Modifier
                         .graphicsLayer { translationX = motion.position * stepPx }
                         .width(itemWidth)
-                        .height(36.dp)
+                        .height(with(density) { tinggiPx.toDp() })
                         .shadow(
                             elevation = if (c.isDark) 2.dp else 1.5.dp,
                             shape = shape,
@@ -464,7 +474,10 @@ fun <T> FilterTabsTrack(
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().then(
+                        if (wrapLabel) Modifier.height(IntrinsicSize.Min).onSizeChanged { measuredHeightPx = it.height }
+                        else Modifier
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -480,7 +493,7 @@ fun <T> FilterTabsTrack(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(36.dp)
+                                .then(if (wrapLabel) Modifier.fillMaxHeight().heightIn(min = minHeight) else Modifier.height(minHeight))
                                 .clip(shape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
@@ -491,7 +504,7 @@ fun <T> FilterTabsTrack(
                                         onSelect(option)
                                     }
                                 }
-                                .padding(horizontal = 8.dp),
+                                .padding(horizontal = 8.dp, vertical = if (wrapLabel) 6.dp else 0.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             val txt = buildAnnotatedString {
@@ -510,8 +523,9 @@ fun <T> FilterTabsTrack(
                                     fontFeatureSettings = "tnum"
                                 ),
                                 color = fg,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                textAlign = TextAlign.Center,
+                                maxLines = if (wrapLabel) Int.MAX_VALUE else 1,
+                                overflow = if (wrapLabel) TextOverflow.Clip else TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -632,7 +646,7 @@ fun StatusArusChip(status: StatusArus) {
     val c = PastiCuanTheme.colors
     val (bg, fg) = when (status) {
         StatusArus.BELUM -> c.warningWash to c.warningInk
-        StatusArus.DICOCOKKAN -> c.gainWash to c.gain
+        StatusArus.DICOCOKKAN, StatusArus.HADIAH -> c.gainWash to c.gain
         StatusArus.BIAYA, StatusArus.BUKAN_ARUS -> c.canvas to c.inkMuted
     }
     Box(
@@ -644,8 +658,7 @@ fun StatusArusChip(status: StatusArus) {
         Text(
             text = status.label,
             style = PastiCuanTheme.typography.tag.copy(fontSize = 11.5.sp),
-            color = fg,
-            maxLines = 1
+            color = fg
         )
     }
 }

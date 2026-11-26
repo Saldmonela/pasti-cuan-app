@@ -1347,6 +1347,14 @@ fun LainnyaScreen(
                             checked = state.kaca.kurangiAnimasi,
                             onCheckedChange = { v -> viewModel.updateKaca { it.copy(kurangiAnimasi = v) } }
                         )
+
+                        HorizontalDivider(color = c.hairline)
+                        PrefSwitchRow(
+                            judul = "Tampilkan FPS",
+                            subjudul = "Penghitung frame per detik untuk uji kelancaran. Gulir layar untuk mengukur.",
+                            checked = state.tampilkanFps,
+                            onCheckedChange = viewModel::setTampilkanFps
+                        )
                     }
                 }
 

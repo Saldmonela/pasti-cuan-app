@@ -16,7 +16,7 @@ export interface TitikGrafik {
 const W = 300;
 const H = 120;
 const PT = 12;
-const PB = 8;
+const PB = 10;
 const PL = 4;
 const STEPS = [0.5, 1, 2, 5, 10, 20, 25, 50, 100];
 
@@ -36,6 +36,7 @@ export default function Chart({
   aktif,
   onAktif,
   persen = false,
+  formatNilai,
 }: {
   titik: TitikGrafik[];
   label: string;
@@ -43,6 +44,8 @@ export default function Chart({
   aktif: number | null;
   onAktif: (i: number | null) => void;
   persen?: boolean;
+  /** Pemformat angka untuk penanda tertinggi & terendah pada rentang aktif. */
+  formatNilai?: (v: number) => string;
 }) {
   const gid = useId().replace(/:/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
@@ -82,8 +85,26 @@ export default function Chart({
     const y0 = Y(0);
     // Hindari label bertumpuk jika terlalu dekat garis 0%
     const sumbu = ticks.filter((val) => val === 0 || Math.abs(Y(val) - y0) >= 16);
-    return { X, Y, d: jalur(v), d2: jalur(v2), v, v2, x0, span, plotW, sumbu };
+    let hiIdx = 0;
+    let loIdx = 0;
+    for (let k = 1; k <= L; k++) {
+      if (v[k] > v[hiIdx]) hiIdx = k;
+      if (v[k] < v[loIdx]) loIdx = k;
+    }
+    return { X, Y, d: jalur(v), d2: jalur(v2), v, v2, x0, span, plotW, sumbu, hiIdx, loIdx };
   }, [titik, L, persen, pr]);
+
+  let ekstrem: { idx: number; teks: string }[] | null = null;
+  if (titik.length >= 2 && formatNilai && g.hiIdx !== g.loIdx && Math.abs(g.Y(g.v[g.loIdx]) - g.Y(g.v[g.hiIdx])) >= 12) {
+    const teksHi = formatNilai(g.v[g.hiIdx]);
+    const teksLo = formatNilai(g.v[g.loIdx]);
+    if (teksHi !== teksLo) {
+      ekstrem = [
+        { idx: g.hiIdx, teks: teksHi },
+        { idx: g.loIdx, teks: teksLo },
+      ];
+    }
+  }
 
   /** Titik terdekat secara horizontal dari posisi pointer (snap). */
   const terdekat = (clientX: number) => {
@@ -178,6 +199,28 @@ export default function Chart({
         )}
         {i === null && dua && <circle cx={g.X(L)} cy={g.Y(g.v2[L])} r={3} fill="var(--ink-muted)" />}
         {i === null && <circle cx={g.X(L)} cy={g.Y(g.v[L])} r={3.5} fill="var(--forest-ink)" />}
+        {ekstrem && (
+          <g key={`${label}-hl`} className="hl" aria-hidden="true">
+            {ekstrem.map(({ idx, teks }) => {
+              const vx = g.X(idx);
+              const vy = g.Y(g.v[idx]);
+              const dir = vx <= PL + g.plotW / 2 ? 1 : -1;
+              const adaTitik = titik[idx].ditandai || (idx === L && i === null);
+              const startPad = titik[idx].ditandai ? 5.5 : idx === L && i === null ? 5 : 1;
+              const x1 = vx + dir * startPad;
+              const x2 = vx + dir * (adaTitik ? startPad + 12 : 14);
+              const tx = x2 + dir * 3;
+              return (
+                <g key={idx}>
+                  <line className="hl-ln" x1={x1} y1={vy} x2={x2} y2={vy} />
+                  <text className="hl-txt" x={tx} y={vy} dy="0.34em" textAnchor={dir === 1 ? "start" : "end"}>
+                    {teks}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        )}
         {i !== null && (
           <g>
             <line x1={g.X(i)} x2={g.X(i)} y1={PT - 6} y2={H - PB} stroke="var(--ink-muted)" strokeDasharray="3 3" />

@@ -63,6 +63,7 @@ export function hapusTujuanSelesai() {
 type AksiArus =
   | { status: "dicocokkan"; permintaanId: string; alasanSelisih?: string }
   | { status: "buat"; anggotaId: string; alasanSelisih?: string }
+  | { status: "hadiah"; catatan: string }
   | { status: "biaya"; catatan: string }
   | { status: "bukan_arus"; catatan: string };
 
@@ -474,7 +475,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           status: a.status,
           permintaan_id: a.status === "dicocokkan" ? a.permintaanId : undefined,
           anggota_id: a.status === "buat" ? a.anggotaId : undefined,
-          catatan: a.status === "biaya" || a.status === "bukan_arus" ? a.catatan : undefined,
+          catatan: a.status === "hadiah" || a.status === "biaya" || a.status === "bukan_arus" ? a.catatan : undefined,
           alasan_selisih: a.status === "dicocokkan" || a.status === "buat" ? a.alasanSelisih : undefined,
         });
         if (!res.ok) return res;
@@ -492,15 +493,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const ditandai = { ditandaiOleh: saya.id, ditandaiPada: kini() };
       const kapan = waktu(pilih[pilih.length - 1].waktu);
 
-      if (a.status === "biaya" || a.status === "bukan_arus") {
+      if (a.status === "hadiah" || a.status === "biaya" || a.status === "bukan_arus") {
+        if (a.status === "hadiah" && arah !== "masuk") {
+          return { ok: false, pesan: "Kategori hadiah / reward hanya untuk transfer masuk." };
+        }
         const c = a.catatan.trim();
         if (!c) return { ok: false, pesan: "Catatan wajib diisi.", field: "catatan" };
         if (c.length > 200) return { ok: false, pesan: "Catatan maksimal 200 karakter.", field: "catatan" };
+        const labelStatus = a.status === "hadiah" ? "hadiah / reward" : a.status === "biaya" ? "biaya pool" : "bukan arus";
         ubah(
           (d) => ({ ...d, arus: d.arus.map((x) => (ids.includes(x.id) ? { ...x, status: a.status, catatan: c, ...ditandai } : x)) }),
-          { tabel: "arus", aksi: "update", ringkasan: `Menandai transfer ${kapan} ${usd(total)} sebagai ${a.status === "biaya" ? "biaya pool" : "bukan arus"}: ${c}`, nilaiLama: "belum", nilaiBaru: a.status },
+          { tabel: "arus", aksi: "update", ringkasan: `Menandai transfer ${kapan} ${usd(total)} sebagai ${labelStatus}: ${c}`, nilaiLama: "belum", nilaiBaru: a.status },
         );
-        return { ok: true, nilai: a.status === "biaya" ? `Transfer ${kapan} ditandai biaya pool.` : `Transfer ${kapan} ditandai bukan arus.` };
+        return { ok: true, nilai: `Transfer ${kapan} ditandai ${labelStatus}.` };
       }
 
       const jenis: Jenis = arah === "masuk" ? "setor" : "tarik";

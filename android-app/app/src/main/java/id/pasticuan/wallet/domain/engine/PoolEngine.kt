@@ -585,6 +585,7 @@ object PoolEngine {
     private fun kondisiDari(kd: Map<String, KondisiAnggotaSnap>): Map<String, KondisiMutable> =
         kd.mapValues { (_, x) -> KondisiMutable(D(x.unit), D(x.modalUsd), D(x.modalSol), x.mulai) }
 
+    /** Arus yang dinetralkan: status belum atau dicocokkan. Hadiah/reward, biaya pool, dan bukan arus dibiarkan memengaruhi nilai. */
     private fun dinetralkan(a: ArusOnchain): Boolean =
         a.status == StatusArus.BELUM || a.status == StatusArus.DICOCOKKAN
 

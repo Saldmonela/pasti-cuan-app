@@ -394,6 +394,7 @@ Tegas tapi ramah. Tingginya 48px, sudutnya 24px, labelnya Title 600 15px dengan 
 ### Grafik Nilai
 - Garis 2px hijau hutan dengan sambungan dan ujung membulat. Area di bawahnya diisi gradasi hijau hutan dari 16% ke 0%.
 - Titik akhir: lingkaran hijau hutan radius 3.5px.
+- Penanda nilai tertinggi dan terendah pada rentang aktif: garis penunjuk mendatar 1px `ink-muted` dari puncak dan lembah kurva utama menuju angka tabular 10px (`ink` 86% dengan halo tepi `card-white` 3px), mengarah ke sisi dalam area plot agar tidak pernah terpotong di tepi kiri/kanan maupun menabrak sumbu persen. Disembunyikan bila seluruh titik bernilai sama.
 - Hari dengan setoran atau penarikan: lingkaran putih radius 4px dengan tepi hijau hutan 2px (AC-12-01).
 - Saat disentuh atau digeser: garis vertikal putus-putus (3 3) warna tinta redup, titik terpilih radius 5.5px, dan tooltip gelap di atas grafik berisi tanggal, nilai dalam satuan aktif, nilai dalam satuan lain, harga SOL, dan transaksi hari itu.
 - Bisa dikendalikan keyboard (panah kiri/kanan, Home, End, Esc). Gerakan jari vertikal tetap menggulir halaman.

@@ -12,9 +12,15 @@ import { mintaSelesai, tanggalEfektifArus, useStore } from "@/lib/store";
 import type { ArusOnchain, StatusArus } from "@/lib/types";
 
 type Filter = "belum" | "ditandai" | "semua";
-type Mode = "cocok" | "buat" | "biaya" | "bukan_arus";
+type Mode = "cocok" | "buat" | "hadiah" | "biaya" | "bukan_arus";
 
-const LABEL_STATUS: Record<StatusArus, string> = { belum: "Belum dicocokkan", dicocokkan: "Dicocokkan", biaya: "Biaya pool", bukan_arus: "Bukan arus" };
+const LABEL_STATUS: Record<StatusArus, string> = {
+  belum: "Belum dicocokkan",
+  dicocokkan: "Dicocokkan",
+  hadiah: "Hadiah / reward",
+  biaya: "Biaya pool",
+  bukan_arus: "Bukan arus",
+};
 const jumlahToken = (a: ArusOnchain) => {
   const lbl = a.simbol ?? a.token;
   return `${angka(a.jumlah, lbl === "SOL" ? 4 : a.jumlah < 1 ? 3 : 2)} ${lbl}`;
@@ -135,7 +141,7 @@ export default function Arus() {
             Lihat wallet di Solscan
           </a>
         </p>
-        <div className="tabs" role="group" aria-label="Saring transfer">
+        <div className="tabs arus-tabs" role="group" aria-label="Saring transfer">
           {(["belum", "ditandai", "semua"] as Filter[]).map((x) => (
             <button key={x} type="button" aria-pressed={f === x} onClick={() => setF(x)}>
               {x === "belum" ? "Belum dicocokkan" : x === "ditandai" ? "Ditandai" : "Semua"}
@@ -147,7 +153,7 @@ export default function Arus() {
           {daftar.length === 0 ? (
             <p className="note">{f === "belum" ? "Semua transfer sudah dicocokkan." : "Belum ada transfer yang ditandai."}</p>
           ) : (
-            <ul className="rows">
+            <ul className="rows arus-rows">
               {daftar.map((a) => {
                 const p = data.permintaan.find((x) => x.id === a.permintaanId);
                 const s = a.status === "belum" ? saran(a) : [];
@@ -157,10 +163,11 @@ export default function Arus() {
                       {a.arah === "masuk" ? <IconArrowDownLeft size={18} /> : <IconArrowUpRight size={18} />}
                     </span>
                     <div className="main">
-                      <div className="t">
-                        {a.arah === "masuk" ? "Masuk" : "Keluar"} {jumlahToken(a)}
-                        <span className={`chip ${a.status}`}>{LABEL_STATUS[a.status]}</span>
+                      <div className="arus-heading">
+                        <span className="t">{a.arah === "masuk" ? "Masuk" : "Keluar"} {jumlahToken(a)}</span>
+                        <span className="v">{a.arah === "masuk" ? "+" : "−"}{usd(a.nilaiUsd)}</span>
                       </div>
+                      <span className={`chip ${a.status}`}>{LABEL_STATUS[a.status]}</span>
                       <div className="s">{waktu(a.waktu)}</div>
                       <div className="s num" style={{ overflowWrap: "anywhere" }}>
                         {a.arah === "masuk" ? "Dari" : "Ke"} {a.alamatLawan}
@@ -191,8 +198,13 @@ export default function Arus() {
                             <button type="button" className="btn pri sm" disabled={offline} onClick={() => mulai(a, "cocok")}>
                               Cocokkan
                             </button>
-                            <button type="button" className="btn ghost sm" disabled={offline} onClick={() => mulai(a, "biaya")}>
-                              Tandai lain
+                            <button
+                              type="button"
+                              className="btn ghost sm"
+                              disabled={offline}
+                              onClick={() => mulai(a, a.arah === "masuk" ? "hadiah" : "biaya")}
+                            >
+                              {a.arah === "masuk" ? "Tandai hadiah / lainnya" : "Tandai biaya atau bukan arus"}
                             </button>
                           </>
                         ) : (
@@ -222,10 +234,6 @@ export default function Arus() {
                         )}
                       </div>
                     </div>
-                    <div className="v">
-                      {a.arah === "masuk" ? "+" : "−"}
-                      {usd(a.nilaiUsd)}
-                    </div>
                   </li>
                 );
               })}
@@ -251,6 +259,7 @@ export default function Arus() {
                   [
                     ["cocok", `Cocokkan dengan ${buka.arah === "masuk" ? "setoran" : "penarikan"} yang diajukan`],
                     ["buat", "Buat permintaan untuk anggota"],
+                    ...(buka.arah === "masuk" ? ([["hadiah", "Hadiah / reward (masuk nilai pool)"]] as [Mode, string][]) : []),
                     [
                       "biaya",
                       buka.arah === "masuk"
@@ -312,7 +321,7 @@ export default function Arus() {
                     <p className="note">
                       Belum ada {buka.arah === "masuk" ? "setoran" : "penarikan"} yang menunggu.
                       {buka.arah === "masuk"
-                        ? ' Pilih "Buat permintaan untuk anggota" jika ini setoran, atau "Operasional / pengembalian biaya pool" jika ini pengembalian SOL gas.'
+                        ? ' Pilih "Buat permintaan untuk anggota" jika ini setoran, atau "Hadiah / reward" jika ini hadiah/insentif protokol.'
                         : ' Pilih "Buat permintaan untuk anggota" jika belum ada permintaan.'}
                     </p>
                     {selesaiTanpaArus.length === 0 && (
@@ -386,17 +395,19 @@ export default function Arus() {
               </div>
             )}
 
-            {(mode === "biaya" || mode === "bukan_arus") && (
+            {(mode === "hadiah" || mode === "biaya" || mode === "bukan_arus") && (
               <Field
                 id="cat"
                 label="Catatan"
                 error={err.catatan}
                 hint={
-                  mode === "biaya"
-                    ? buka.arah === "masuk"
-                      ? "Wajib. Contoh: pengembalian SOL operasional/gas. Nilainya masuk ke pool tanpa mengubah porsi."
-                      : "Wajib. Contoh: biaya transaksi, gas, atau sewa akun. Nilainya mengurangi pool tanpa mengubah porsi."
-                    : "Wajib. Contoh: token spam yang lolos ambang."
+                  mode === "hadiah"
+                    ? "Wajib. Contoh: reward Meteora, airdrop, atau insentif protokol. Nilainya masuk ke pool tanpa mengubah porsi."
+                    : mode === "biaya"
+                      ? buka.arah === "masuk"
+                        ? "Wajib. Contoh: pengembalian SOL operasional/gas. Nilainya masuk ke pool tanpa mengubah porsi."
+                        : "Wajib. Contoh: biaya transaksi, gas, atau sewa akun. Nilainya mengurangi pool tanpa mengubah porsi."
+                      : "Wajib. Contoh: token spam yang lolos ambang."
                 }
               >
                 <div className={`inp${err.catatan ? " err" : ""}`}>

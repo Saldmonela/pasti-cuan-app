@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const { member, admin } = await requireManager();
     const body = (await request.json().catch(() => ({}))) as {
       ids?: string[];
-      status?: "dicocokkan" | "buat" | "biaya" | "bukan_arus";
+      status?: "dicocokkan" | "buat" | "hadiah" | "biaya" | "bukan_arus";
       permintaan_id?: string;
       anggota_id?: string;
       catatan?: string;
@@ -42,7 +42,10 @@ export async function POST(request: Request) {
     const waktuTransfer = sortedPilih[sortedPilih.length - 1].waktu;
     const kapan = fmtWaktu(waktuTransfer);
 
-    if (body.status === "biaya" || body.status === "bukan_arus") {
+    if (body.status === "hadiah" || body.status === "biaya" || body.status === "bukan_arus") {
+      if (body.status === "hadiah" && arah !== "masuk") {
+        throw new ApiError(400, "VALIDASI", "Kategori hadiah / reward hanya untuk transfer masuk.");
+      }
       const catatan = body.catatan?.trim() ?? "";
       if (!catatan) throw new ApiError(400, "VALIDASI", "Catatan wajib diisi.", { catatan: "Catatan wajib diisi." });
       if (catatan.length > 200) {
@@ -63,9 +66,11 @@ export async function POST(request: Request) {
       return NextResponse.json({
         ok: true,
         pesan:
-          body.status === "biaya"
-            ? `Transfer ${kapan} ditandai biaya pool.`
-            : `Transfer ${kapan} ditandai bukan arus.`,
+          body.status === "hadiah"
+            ? `Transfer ${kapan} ditandai hadiah / reward.`
+            : body.status === "biaya"
+              ? `Transfer ${kapan} ditandai biaya pool.`
+              : `Transfer ${kapan} ditandai bukan arus.`,
       });
     }
 

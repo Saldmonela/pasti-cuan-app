@@ -63,7 +63,7 @@ export interface Permintaan {
   dibuatPada: string;
 }
 
-export type StatusArus = "belum" | "dicocokkan" | "biaya" | "bukan_arus";
+export type StatusArus = "belum" | "dicocokkan" | "hadiah" | "biaya" | "bukan_arus";
 
 /** Transfer masuk/keluar wallet pool ke/dari alamat luar (BR-19, tabel `arus_onchain`). */
 export interface ArusOnchain {

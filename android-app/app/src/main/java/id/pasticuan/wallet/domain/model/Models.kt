@@ -85,6 +85,9 @@ enum class StatusArus(val raw: String, val label: String) {
     @SerialName("dicocokkan")
     DICOCOKKAN("dicocokkan", "Dicocokkan"),
 
+    @SerialName("hadiah")
+    HADIAH("hadiah", "Hadiah / reward"),
+
     @SerialName("biaya")
     BIAYA("biaya", "Biaya pool"),
 

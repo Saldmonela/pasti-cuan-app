@@ -473,7 +473,7 @@ const kondisiDari = (kd: Keadaan): Record<string, Kondisi> =>
 
 // ---------- nilai live (BR-19) ----------
 
-/** Arus yang dinetralkan: status belum atau dicocokkan. Biaya pool dan bukan arus dibiarkan memengaruhi nilai. */
+/** Arus yang dinetralkan: status belum atau dicocokkan. Hadiah/reward, biaya pool, dan bukan arus dibiarkan memengaruhi nilai. */
 const dinetralkan = (a: ArusOnchain) => a.status === "belum" || a.status === "dicocokkan";
 
 /** Snapshot resmi terakhir pada atau sebelum t. */

@@ -3,6 +3,8 @@ package id.pasticuan.wallet
 import id.pasticuan.wallet.domain.engine.OnchainSimulator
 import id.pasticuan.wallet.domain.engine.PoolEngine
 import id.pasticuan.wallet.domain.engine.SeedData
+import id.pasticuan.wallet.domain.model.ArahArus
+import id.pasticuan.wallet.domain.model.ArusOnchain
 import id.pasticuan.wallet.domain.model.Jenis
 import id.pasticuan.wallet.domain.model.Permintaan
 import id.pasticuan.wallet.domain.model.Rentang
@@ -158,6 +160,36 @@ class PoolEngineTest {
         assertFalse(h.cek.lolos)
         assertTrue(h.cek.penyebab.contains("Penarikan Rezki 2026-11-14 melebihi nilai bersihnya."))
         assertEquals(rezki.feeUsd, h.lebihBayar[0].kurangFeeUsd, 0.01)
+    }
+
+    @Test
+    fun hadiahRewardTidakDinetralkanDanMenambahNilaiPool() {
+        val sim = OnchainSimulator(loadHargaPasarJson())
+        val seed = SeedData.buatDataAwal(sim)
+        val semuaTitik = sim.titikEstimasi(seed.snapshots, seed.permintaan) + sim.semuaTitik()
+        val sekarang = Formatters.ms("2026-11-15T14:30:00+07:00")
+        val arusReward = ArusOnchain(
+            id = "a_reward_meteora",
+            signature = "5iuJRewardMeteora",
+            urutan = 0,
+            waktu = "2026-11-15T10:07:00+07:00",
+            arah = ArahArus.MASUK,
+            token = "USDC",
+            simbol = "USDC",
+            jumlah = 1.79,
+            nilaiUsd = 1.79,
+            alamatLawan = "OmniBridge",
+            status = StatusArus.BELUM
+        )
+        val resmiSebelum = PoolEngine.hitungPool(seed.anggota, seed.snapshots, seed.permintaan, seed.pengaturan, seed.arus + arusReward, semuaTitik)
+        val liveSebelum = PoolEngine.terapkanLive(resmiSebelum, seed.anggota, seed.snapshots, seed.arus + arusReward, semuaTitik, sekarang, seed.pengaturan).live!!
+
+        val arusSesudah = seed.arus + arusReward.copy(status = StatusArus.HADIAH, catatan = "Reward Meteora")
+        val resmiSesudah = PoolEngine.hitungPool(seed.anggota, seed.snapshots, seed.permintaan, seed.pengaturan, arusSesudah, semuaTitik)
+        val liveSesudah = PoolEngine.terapkanLive(resmiSesudah, seed.anggota, seed.snapshots, arusSesudah, semuaTitik, sekarang, seed.pengaturan).live!!
+
+        assertEquals(1.79, liveSesudah.nilaiUsd - liveSebelum.nilaiUsd, 0.005)
+        assertEquals(1.79, liveSesudah.arusDinetralkanUsd - liveSebelum.arusDinetralkanUsd, 0.005)
     }
 
     @Test

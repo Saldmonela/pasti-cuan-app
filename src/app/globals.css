@@ -153,7 +153,7 @@ p { margin: 0; }
 .chip.dibatalkan { background: var(--sage-canvas); color: var(--ink-muted); }
 .chip.peran { background: var(--forest-wash); color: var(--forest-ink); }
 .chip.belum { background: var(--warning-wash); color: var(--warning-ink); }
-.chip.dicocokkan { background: var(--gain-wash); color: var(--gain); }
+.chip.dicocokkan, .chip.hadiah { background: var(--gain-wash); color: var(--gain); }
 .chip.biaya, .chip.bukan_arus { background: var(--sage-canvas); color: var(--ink-muted); }
 
 /* ---------- daftar label-nilai ---------- */
@@ -178,6 +178,9 @@ p { margin: 0; }
 .rows .v { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rows .v small { display: block; font-size: 12px; font-weight: 400; color: var(--ink-muted); }
 .rows .acts { display: flex; gap: var(--s-sm); margin-top: var(--s-md); flex-wrap: wrap; }
+.arus-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s-xs) var(--s-sm); margin-bottom: var(--s-xs); }
+.arus-heading .t, .arus-heading .v, .arus-rows .chip { white-space: normal; overflow-wrap: anywhere; }
+.arus-rows .acts .btn { max-width: 100%; height: auto; min-height: 44px; padding-block: var(--s-sm); white-space: normal; text-align: center; overflow-wrap: anywhere; }
 .ico-dot { width: 36px; height: 36px; border-radius: var(--r-pill); background: var(--forest-wash); color: var(--forest-ink); display: grid; place-items: center; flex: none; }
 
 /* ---------- bar porsi ---------- */
@@ -195,8 +198,21 @@ p { margin: 0; }
 .chart svg:focus-visible { outline-offset: 4px; border-radius: 6px; }
 .chart .ax { font-size: 10px; fill: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .chart .ln { animation: draw 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.chart .hl { pointer-events: none; animation: hl-in 0.25s 0.45s ease both; }
+.chart .hl-ln { stroke: var(--ink-muted); stroke-width: 1; stroke-opacity: 0.75; }
+.chart .hl-txt {
+  font-size: 10px;
+  font-weight: 600;
+  fill: color-mix(in srgb, var(--ink) 86%, var(--ink-muted));
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke fill;
+  stroke: var(--card-white);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
 @keyframes draw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
-@media (prefers-reduced-motion: reduce) { .chart .ln { animation: none; } }
+@keyframes hl-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .chart .ln, .chart .hl { animation: none; } }
 .chart-empty { display: grid; place-items: center; gap: var(--s-sm); text-align: center; min-height: 112px; margin: var(--s-xl) 0 14px; border-radius: var(--r-field); background: var(--field); color: var(--ink-muted); font-size: 13px; padding: var(--s-lg); }
 .cap { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--ink-muted); margin: -4px 0 14px; }
 .cap .mk { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--forest-ink); background: var(--card-white); flex: none; margin-top: 2px; }
@@ -261,6 +277,7 @@ html[data-lg-reduce-motion="on"] .sk::after { display: none; }
 .tabs button { flex: 1; min-height: 36px; border: 0; border-radius: var(--r-control); background: none; font-size: 13px; font-weight: 600; color: var(--ink-muted); }
 .tabs button[aria-pressed="true"] { background: var(--forest-ink); color: var(--lime-action); }
 .tabs .n { font-variant-numeric: tabular-nums; opacity: 0.8; margin-left: 4px; }
+.arus-tabs button { min-width: 0; min-height: 44px; padding: 4px 6px; overflow-wrap: anywhere; }
 
 .masuk { min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; gap: var(--s-xl); max-width: var(--col); margin: 0 auto; padding: var(--s-xxl) var(--s-lg); }
 .wordmark { font-size: 32px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
@@ -1070,7 +1087,8 @@ html[data-liquid-glass="on"][data-lg-perf="on"] .toast {
 }
 
 /* ---------- 7. Kurangi Animasi ---------- */
-html[data-lg-reduce-motion="on"] .chart .ln {
+html[data-lg-reduce-motion="on"] .chart .ln,
+html[data-lg-reduce-motion="on"] .chart .hl {
   animation: none;
 }
 html[data-lg-reduce-motion="on"] .lg-slider,

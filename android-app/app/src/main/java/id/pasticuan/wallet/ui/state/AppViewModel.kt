@@ -107,7 +107,8 @@ data class AppUiState(
     val hasil: PoolEngine.HasilPool? = null,
     val sekarangMs: Long = System.currentTimeMillis(),
     val toastMessage: String? = null,
-    val gantiAkunSheetTerbuka: Boolean = false
+    val gantiAkunSheetTerbuka: Boolean = false,
+    val tampilkanFps: Boolean = false
 ) {
     val saya: Anggota? get() = data?.anggota?.firstOrNull { it.id == sayaId }
     val menunggu: List<Permintaan>
@@ -567,6 +568,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(offline = offline) }
     }
 
+    fun setTampilkanFps(v: Boolean) {
+        _state.update { it.copy(tampilkanFps = v) }
+    }
+
     fun bukaGantiAkun(terbuka: Boolean) {
         if (!_state.value.isSimulasiMode) return
         _state.update { it.copy(gantiAkunSheetTerbuka = terbuka) }
@@ -903,7 +908,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun prosesArusOnchain(
         arusIds: List<String>,
-        mode: String, // "cocok" | "buat" | "biaya" | "bukan_arus"
+        mode: String, // "cocok" | "buat" | "hadiah" | "biaya" | "bukan_arus"
         permintaanId: String? = null,
         anggotaId: String? = null,
         catatan: String? = null,
@@ -917,7 +922,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 status = statusServer,
                 permintaanId = if (mode == "cocok") permintaanId else null,
                 anggotaId = if (mode == "buat") anggotaId else null,
-                catatan = if (mode == "biaya" || mode == "bukan_arus") catatan?.trim() else null,
+                catatan = if (mode == "hadiah" || mode == "biaya" || mode == "bukan_arus") catatan?.trim() else null,
                 alasanSelisih = if (mode == "cocok" || mode == "buat") alasanSelisih?.trim()?.takeIf { it.isNotEmpty() } else null
             )
             return when (val res = jalankanMutasiLive { repository.tandaiArus(req) }) {
@@ -943,10 +948,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val totalUsd = Formatters.rounded(pilih.sumOf { it.nilaiUsd }, 2)
         val nowIso = Formatters.isoWib(s.sekarangMs)
 
-        if (mode == "biaya" || mode == "bukan_arus") {
+        if (mode == "hadiah" || mode == "biaya" || mode == "bukan_arus") {
+            if (mode == "hadiah" && arah != ArahArus.MASUK) return "Kategori hadiah / reward hanya untuk transfer masuk."
             val cat = catatan?.trim().orEmpty()
             if (cat.isEmpty()) return "Catatan wajib diisi."
-            val st = if (mode == "biaya") StatusArus.BIAYA else StatusArus.BUKAN_ARUS
+            val st = when (mode) {
+                "hadiah" -> StatusArus.HADIAH
+                "biaya" -> StatusArus.BIAYA
+                else -> StatusArus.BUKAN_ARUS
+            }
             val updatedArus = d.arus.map { a ->
                 if (a.id in arusIds) a.copy(status = st, catatan = cat, ditandaiOleh = saya.id, ditandaiPada = nowIso) else a
             }
@@ -961,7 +971,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 pada = nowIso
             )
             recompute(d.copy(arus = updatedArus, log = listOf(logBaru) + d.log))
-            tampilkanToast(if (mode == "biaya") "Transfer $kapan ditandai biaya pool." else "Transfer $kapan ditandai bukan arus.")
+            tampilkanToast(
+                when (mode) {
+                    "hadiah" -> "Transfer $kapan ditandai hadiah / reward."
+                    "biaya" -> "Transfer $kapan ditandai biaya pool."
+                    else -> "Transfer $kapan ditandai bukan arus."
+                }
+            )
             return null
         }
 

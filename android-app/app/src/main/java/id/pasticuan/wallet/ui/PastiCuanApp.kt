@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -54,6 +55,7 @@ import id.pasticuan.wallet.domain.model.Peran
 import id.pasticuan.wallet.domain.util.Formatters
 import id.pasticuan.wallet.ui.components.ApplyLiquidSheetWindowBlur
 import id.pasticuan.wallet.ui.components.FloatingPillNav
+import id.pasticuan.wallet.ui.components.FpsMeterOverlay
 import id.pasticuan.wallet.ui.components.GlassSurfaceSpec
 import id.pasticuan.wallet.ui.components.IconDot
 import id.pasticuan.wallet.ui.components.LocalAppBackdrop
@@ -217,6 +219,9 @@ fun PastiCuanApp(
         val appBackdrop = rememberLayerBackdrop(onDraw = paintBackdrop)
         val (scrollGlass, nestedScrollConn) = rememberScrollGlassTracker(state.currentRoute)
         val blurThresholdPx = with(LocalDensity.current) { 8.dp.toPx() }
+        val topBlurVisible by remember(scrollGlass, blurThresholdPx) {
+            derivedStateOf { scrollGlass.scrollOffsetPx > blurThresholdPx }
+        }
         val pullState = rememberPullToRefreshState()
 
         CompositionLocalProvider(
@@ -284,7 +289,7 @@ fun PastiCuanApp(
                 // Progressive blur murni tanpa kabut warna di bawah status bar untuk layar tab utama
                 if (state.currentRoute.showBottomNav) {
                     TopProgressiveBlur(
-                        visible = scrollGlass.scrollOffsetPx > blurThresholdPx,
+                        visible = topBlurVisible,
                         extraHeight = if (state.isSimulasiMode) 42.dp else 28.dp,
                         modifier = Modifier.align(Alignment.TopCenter)
                     )
@@ -375,6 +380,10 @@ fun PastiCuanApp(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                }
+
+                if (state.tampilkanFps) {
+                    FpsMeterOverlay(modifier = Modifier.align(Alignment.TopEnd))
                 }
             }
         }

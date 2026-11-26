@@ -252,6 +252,29 @@ describe("nilai live dan penetralan (BR-19)", () => {
     near(live.arusDinetralkanUsd, 731.51);
   });
 
+  it("hadiah / reward masuk tidak dinetralkan dan menambah nilai pool", () => {
+    const d = dataAwal();
+    d.arus.push({
+      id: "a_reward_meteora",
+      signature: "5iuJRewardMeteora",
+      urutan: 0,
+      waktu: "2026-11-15T10:07:00+07:00",
+      arah: "masuk",
+      token: "USDC",
+      simbol: "USDC",
+      jumlah: 1.79,
+      nilaiUsd: 1.79,
+      alamatLawan: "OmniBridge",
+      status: "belum",
+    });
+    const sebelumTandai = konteks(d).tampil.live!;
+    d.arus[d.arus.length - 1].status = "hadiah";
+    d.arus[d.arus.length - 1].catatan = "Reward Meteora";
+    const sesudahTandai = konteks(d).tampil.live!;
+    near(sesudahTandai.nilaiUsd - sebelumTandai.nilaiUsd, 1.79, 0.005);
+    near(sesudahTandai.arusDinetralkanUsd - sebelumTandai.arusDinetralkanUsd, 1.79, 0.005);
+  });
+
   it("rekonsiliasi: total anggota = nilai disesuaikan; dikurangi yang belum diproses = isi wallet", () => {
     const { tampil } = konteks(dataAwal());
     const total = tampil.posisi.reduce((t, p) => t + p.netUsd, 0) + tampil.pengelola.feeTerutangTotal;
